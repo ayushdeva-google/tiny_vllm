@@ -27,18 +27,41 @@ ENV/
 env.bak/
 venv.bak/
 
-# Profiler & large model / trace outputs
+# Profiler, Traces & Large Model Outputs
+profile_results/
 *.sqlite
 *.nsys-rep
 *.qdrep
 *.nvvp
+*.trace.json
+*trace*.json
+*.prof
 *.pt
 *.bin
 *.safetensors
 *.onnx
+
+# Installer & Archive Packages
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Secrets & Credentials
+credentials.json
+token.json
+client_secret*.json
+*.key
+*.pem
+
+# Logs & Temporary Files
+*.log
+.cache/
+wandb/
 
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 *.swp
+*.bak
