@@ -257,10 +257,11 @@ class Transformer(nn.Module):
         self.register_buffer("cos_cached", cos, persistent=False)
         self.register_buffer("sin_cached", sin, persistent=False)
 
-    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, return_all_logits: bool = False) -> torch.Tensor:
         """
         Vanilla forward pass over input_ids: (bsz, seqlen).
-        Returns logits for the last token position: (bsz, 1, vocab_size).
+        If return_all_logits is True: returns logits for all tokens (bsz, seqlen, vocab_size).
+        Otherwise returns logits for the last token position: (bsz, 1, vocab_size).
         """
         bsz, seqlen = input_ids.shape
         h = self.embed_tokens(input_ids)
@@ -274,8 +275,11 @@ class Transformer(nn.Module):
 
         h = self.norm(h)
 
-        # Compute logits only for the final position (inference step)
-        logits = self.lm_head(h[:, [-1], :])  # shape: (bsz, 1, vocab_size)
+        # Compute logits for all positions or only the final position
+        if return_all_logits:
+            logits = self.lm_head(h)  # shape: (bsz, seqlen, vocab_size)
+        else:
+            logits = self.lm_head(h[:, [-1], :])  # shape: (bsz, 1, vocab_size)
         return logits
 
 

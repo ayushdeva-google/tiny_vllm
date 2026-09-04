@@ -1,15 +1,21 @@
 """
 Profile Visualizer for tiny_vllm.
 
-Extracts token-wise latency and operator time composition (Tokenizer, RMSNorm, Attention,
-FFN, LM Head, Sampling) from torch.profiler traces.
-
-Capabilities:
-1. Programmatic metric extraction from torch.profiler.profile events.
-2. Rich terminal dashboard with formatted tables, statistics, and colored stacked bars.
-3. Zero-dependency, standalone interactive HTML/SVG dashboard (100% offline).
-4. Structured JSON metrics export.
-5. Optional Matplotlib export if installed.
+Extracts fine-grained token-wise latency and sub-operator time composition:
+- Embedding
+- RMSNorm_Attn (pre-attention norm)
+- QKV_Linear (Q, K, V linear projections)
+- RoPE (rotary position embeddings)
+- Attn_Compute (GQA broadcast, attention matrix QK^T, mask, softmax, PV)
+- O_Linear (attention output projection)
+- RMSNorm_FFN (post-attention norm)
+- FFN_Gate_Up_Linear (SwiGLU gate & up projections)
+- FFN_SiLU_Mul (SiLU activation & elementwise multiplication)
+- FFN_Down_Linear (SwiGLU down projection)
+- RMSNorm_Final (final normalization)
+- LM_Head (vocabulary projection)
+- Sampling (argmax / multinomial + GPU-to-CPU sync)
+- Tokenizer_Decode (string detokenization)
 """
 
 import json
@@ -24,106 +30,115 @@ from rich.table import Table
 from rich.text import Text
 
 
-# High-level categories tracked in the visualizer
-GPU_CATEGORIES = {"Embedding", "RMSNorm", "Attention", "FFN", "LM_Head", "Sampling"}
-CPU_CATEGORIES = {"Tokenizer_Decode", "Tokenizer_Encode"}
+# High-level fine-grained categories tracked in the visualizer
+FINE_GRAINED_CATEGORIES = [
+    "Embedding",
+    "RMSNorm_Attn",
+    "QKV_Linear",
+    "RoPE",
+    "Attn_Compute",
+    "O_Linear",
+    "RMSNorm_FFN",
+    "FFN_Gate_Up_Linear",
+    "FFN_SiLU_Mul",
+    "FFN_Down_Linear",
+    "RMSNorm_Final",
+    "LM_Head",
+    "Sampling",
+    "Tokenizer_Decode",
+]
+
+GPU_CATEGORIES = {
+    "Embedding",
+    "RMSNorm_Attn",
+    "QKV_Linear",
+    "RoPE",
+    "Attn_Compute",
+    "O_Linear",
+    "RMSNorm_FFN",
+    "FFN_Gate_Up_Linear",
+    "FFN_SiLU_Mul",
+    "FFN_Down_Linear",
+    "RMSNorm_Final",
+    "LM_Head",
+    "Sampling",
+}
+
+CPU_CATEGORIES = {
+    "Tokenizer_Decode",
+    "Tokenizer_Encode",
+}
 
 CATEGORY_COLORS = {
-    "Attention": "#e74c3c",       # Red
-    "FFN": "#f39c12",             # Orange
-    "RMSNorm": "#2ecc71",         # Green
-    "LM_Head": "#9b59b6",         # Purple
-    "Embedding": "#95a5a6",       # Gray
-    "Sampling": "#3498db",        # Blue
-    "Tokenizer_Decode": "#1abc9c",# Teal
-    "Tokenizer_Encode": "#16a085",# Dark Teal
+    "Embedding": "#7f8c8d",          # Gray
+    "RMSNorm_Attn": "#1abc9c",       # Light Teal
+    "QKV_Linear": "#e74c3c",         # Red
+    "RoPE": "#c0392b",               # Dark Red
+    "Attn_Compute": "#ff7675",       # Salmon Red
+    "O_Linear": "#d63031",           # Crimson
+    "RMSNorm_FFN": "#2ecc71",        # Green
+    "FFN_Gate_Up_Linear": "#f39c12", # Orange
+    "FFN_SiLU_Mul": "#e67e22",       # Amber
+    "FFN_Down_Linear": "#d35400",    # Rust Orange
+    "RMSNorm_Final": "#27ae60",      # Dark Green
+    "LM_Head": "#9b59b6",            # Purple
+    "Sampling": "#3498db",           # Blue
+    "Tokenizer_Decode": "#00cec9",   # Cyan
 }
 
 CATEGORY_TERMINAL_STYLES = {
-    "Attention": "bold red",
-    "FFN": "bold yellow",
-    "RMSNorm": "bold green",
-    "LM_Head": "bold magenta",
     "Embedding": "dim white",
-    "Sampling": "bold cyan",
-    "Tokenizer_Decode": "bold blue",
-    "Tokenizer_Encode": "dim blue",
+    "RMSNorm_Attn": "bold cyan",
+    "QKV_Linear": "bold red",
+    "RoPE": "red",
+    "Attn_Compute": "bold bright_red",
+    "O_Linear": "dark_red",
+    "RMSNorm_FFN": "bold green",
+    "FFN_Gate_Up_Linear": "bold yellow",
+    "FFN_SiLU_Mul": "bold orange3",
+    "FFN_Down_Linear": "bold orange_red1",
+    "RMSNorm_Final": "green",
+    "LM_Head": "bold magenta",
+    "Sampling": "bold blue",
+    "Tokenizer_Decode": "dim cyan",
 }
 
 
-def extract_token_metrics(
+def extract_single_token_metric(
     prof: torch.profiler.profile,
-    token_details: Optional[List[Dict[str, Any]]] = None,
-) -> List[Dict[str, Any]]:
+    step_idx: int,
+    token_id: Optional[int] = None,
+    token_text: str = "",
+) -> Dict[str, Any]:
     """
-    Traverses the profiler event tree and aggregates operator execution times
-    under each top-level 'token_{step}' event.
-
-    Args:
-        prof: The active or completed PyTorch Profiler instance.
-        token_details: Optional metadata list containing [{'step': int, 'id': int, 'text': str}, ...]
-
-    Returns:
-        A list of token metric dictionaries containing step index, total latency,
-        and per-op time composition in milliseconds.
+    Extracts fine-grained timings from a single profiled step.
     """
-    token_records = []
+    cat_times: Dict[str, float] = OrderedDict((cat, 0.0) for cat in FINE_GRAINED_CATEGORIES)
 
-    def accumulate_child_times(event, cat_times: Dict[str, float]):
-        # Match high-level categories
+    def accumulate_child_times(event):
         if event.name in GPU_CATEGORIES:
-            cat_times[event.name] += event.device_time_total / 1000.0  # microseconds to ms
-            return  # Stop recursion: event.device_time_total already includes child CUDA kernels
+            cat_times[event.name] += event.device_time_total / 1000.0  # us to ms
+            return
         elif event.name in CPU_CATEGORIES:
-            cat_times[event.name] += event.cpu_time_total / 1000.0  # microseconds to ms
+            cat_times[event.name] += event.cpu_time_total / 1000.0  # us to ms
             return
 
         for child in event.cpu_children:
-            accumulate_child_times(child, cat_times)
+            accumulate_child_times(child)
 
-    # Walk through top-level events with cpu_children
     for event in prof.events():
         if event.name.startswith("token_") and len(event.cpu_children) > 0:
-            try:
-                step_idx = int(event.name.split("_")[1])
-            except (ValueError, IndexError):
-                continue
+            accumulate_child_times(event)
 
-            cat_times: Dict[str, float] = OrderedDict([
-                ("Attention", 0.0),
-                ("FFN", 0.0),
-                ("RMSNorm", 0.0),
-                ("LM_Head", 0.0),
-                ("Sampling", 0.0),
-                ("Embedding", 0.0),
-                ("Tokenizer_Decode", 0.0),
-            ])
+    total_latency_ms = sum(cat_times.values())
 
-            accumulate_child_times(event, cat_times)
-
-            total_latency_ms = sum(cat_times.values())
-            # Fallback if device_time on child was zero or missed
-            if total_latency_ms == 0.0:
-                total_latency_ms = max(event.device_time_total, event.cpu_time_total) / 1000.0
-
-            # Attach token detail if available
-            tok_text = ""
-            tok_id = None
-            if token_details and step_idx < len(token_details):
-                tok_text = token_details[step_idx].get("text", "")
-                tok_id = token_details[step_idx].get("id", None)
-
-            token_records.append({
-                "step": step_idx,
-                "token_id": tok_id,
-                "token_text": tok_text,
-                "total_latency_ms": total_latency_ms,
-                "breakdown": cat_times,
-            })
-
-    # Sort records by step index
-    token_records.sort(key=lambda r: r["step"])
-    return token_records
+    return {
+        "step": step_idx,
+        "token_id": token_id,
+        "token_text": token_text,
+        "total_latency_ms": total_latency_ms,
+        "breakdown": cat_times,
+    }
 
 
 def render_terminal_dashboard(
@@ -141,95 +156,66 @@ def render_terminal_dashboard(
         console.print("[yellow][!] No token metrics found to display.[/yellow]")
         return
 
-    total_tokens = len(token_records)
+    sampled_count = len(token_records)
     total_time_ms = sum(r["total_latency_ms"] for r in token_records)
-    avg_latency_ms = total_time_ms / total_tokens if total_tokens > 0 else 0.0
-    throughput = (total_tokens / (total_time_ms / 1000.0)) if total_time_ms > 0 else 0.0
+    avg_latency_ms = total_time_ms / sampled_count if sampled_count > 0 else 0.0
 
-    # Aggregate total time per op
-    total_by_op = OrderedDict([
-        ("Attention", sum(r["breakdown"]["Attention"] for r in token_records)),
-        ("FFN", sum(r["breakdown"]["FFN"] for r in token_records)),
-        ("RMSNorm", sum(r["breakdown"]["RMSNorm"] for r in token_records)),
-        ("LM_Head", sum(r["breakdown"]["LM_Head"] for r in token_records)),
-        ("Sampling", sum(r["breakdown"]["Sampling"] for r in token_records)),
-        ("Embedding", sum(r["breakdown"]["Embedding"] for r in token_records)),
-        ("Tokenizer_Decode", sum(r["breakdown"]["Tokenizer_Decode"] for r in token_records)),
-    ])
+    # Aggregate total time per op across sampled steps
+    total_by_op = OrderedDict((cat, sum(r["breakdown"][cat] for r in token_records)) for cat in FINE_GRAINED_CATEGORIES)
 
     # 1. Summary Header Panel
     header_text = Text()
-    header_text.append(f"Generated Tokens: {total_tokens} tokens\n", style="bold white")
-    header_text.append(f"Total Decode Latency: {total_time_ms:.2f} ms\n", style="cyan")
-    header_text.append(f"Mean Token Latency (TPOT): {avg_latency_ms:.2f} ms/token\n", style="bold green")
-    header_text.append(f"Generation Throughput: {throughput:.1f} tokens/sec\n", style="bold yellow")
-    header_text.append("\nGlobal Op Breakdown:\n", style="bold underline")
+    header_text.append(f"Sampled Steps: {sampled_count} checkpoints\n", style="bold white")
+    header_text.append(f"Average Sampled Latency: {avg_latency_ms:.2f} ms/token\n", style="bold green")
+    header_text.append("\nAggregate Op Breakdown across Sampled Steps:\n", style="bold underline")
     for op, op_ms in total_by_op.items():
-        pct = (op_ms / total_time_ms * 100.0) if total_time_ms > 0 else 0.0
-        style = CATEGORY_TERMINAL_STYLES.get(op, "white")
-        header_text.append(f"  • {op:16s}: {op_ms:7.2f} ms ({pct:5.1f}%)\n", style=style)
+        if op_ms > 0:
+            pct = (op_ms / total_time_ms * 100.0) if total_time_ms > 0 else 0.0
+            style = CATEGORY_TERMINAL_STYLES.get(op, "white")
+            header_text.append(f"  • {op:20s}: {op_ms:7.2f} ms ({pct:5.1f}%)\n", style=style)
 
-    console.print(Panel(header_text, title="[bold cyan]LLaMA-3.2 Profiler Summary[/bold cyan]", expand=False))
+    console.print(Panel(header_text, title="[bold cyan]LLaMA-3.2 Fine-Grained Profiler Summary[/bold cyan]", expand=False))
 
-    # 2. Per-Token Breakdown Table
+    # 2. Detailed Breakdown Table
     table = Table(
-        title="[bold green]Token-wise Latency & Op-Time Composition Table[/bold green]",
+        title="[bold green]Sampled Step-by-Step Fine-Grained Op Latency (ms)[/bold green]",
         show_header=True,
         header_style="bold magenta",
         expand=True,
     )
 
-    table.add_column("Step", justify="right", style="cyan", width=5)
-    table.add_column("Token", justify="left", style="white", max_width=15)
-    table.add_column("Total (ms)", justify="right", style="bold white", width=10)
-    table.add_column("Attention", justify="right", style="bold red", width=10)
-    table.add_column("FFN", justify="right", style="bold yellow", width=10)
-    table.add_column("RMSNorm", justify="right", style="bold green", width=9)
-    table.add_column("LM Head", justify="right", style="bold magenta", width=9)
-    table.add_column("Sampling", justify="right", style="bold cyan", width=9)
-    table.add_column("Tokenizer", justify="right", style="blue", width=9)
-    table.add_column("Op Stack Visual Bar", justify="left", min_width=25)
+    table.add_column("Step", justify="right", style="cyan", width=6)
+    table.add_column("Total", justify="right", style="bold white", width=8)
+    table.add_column("QKV", justify="right", style="red", width=7)
+    table.add_column("RoPE", justify="right", style="red", width=6)
+    table.add_column("AttnCore", justify="right", style="bright_red", width=8)
+    table.add_column("O_Proj", justify="right", style="dark_red", width=7)
+    table.add_column("GateUp", justify="right", style="yellow", width=7)
+    table.add_column("SiLU", justify="right", style="orange3", width=6)
+    table.add_column("Down", justify="right", style="orange_red1", width=7)
+    table.add_column("RMSNorms", justify="right", style="green", width=9)
+    table.add_column("LM_Head", justify="right", style="magenta", width=8)
+    table.add_column("Sampling", justify="right", style="blue", width=8)
 
-    bar_width = 30
     for r in token_records:
         b = r["breakdown"]
         tot = r["total_latency_ms"]
-        safe_tot = tot if tot > 0 else 1.0
-
-        # Construct visual mini stacked bar
-        bar_text = Text()
-        op_chars = [
-            ("Attention", "█", "red"),
-            ("FFN", "█", "yellow"),
-            ("RMSNorm", "█", "green"),
-            ("LM_Head", "█", "magenta"),
-            ("Sampling", "█", "cyan"),
-            ("Tokenizer_Decode", "█", "blue"),
-        ]
-        accumulated_chars = 0
-        for op_name, char, style in op_chars:
-            chars_for_op = int(round((b[op_name] / safe_tot) * bar_width))
-            if chars_for_op > 0:
-                bar_text.append(char * chars_for_op, style=style)
-                accumulated_chars += chars_for_op
-
-        remaining = bar_width - accumulated_chars
-        if remaining > 0:
-            bar_text.append(" " * remaining)
-
-        tok_display = repr(r["token_text"])[1:-1] if r["token_text"] else f"id:{r['token_id']}"
+        # Sum all three RMSNorms for display brevity
+        rmsnorms_total = b["RMSNorm_Attn"] + b["RMSNorm_FFN"] + b["RMSNorm_Final"]
 
         table.add_row(
-            str(r["step"]),
-            tok_display,
+            f"#{r['step']}",
             f"{tot:.2f}",
-            f"{b['Attention']:.2f}",
-            f"{b['FFN']:.2f}",
-            f"{b['RMSNorm']:.2f}",
+            f"{b['QKV_Linear']:.2f}",
+            f"{b['RoPE']:.2f}",
+            f"{b['Attn_Compute']:.2f}",
+            f"{b['O_Linear']:.2f}",
+            f"{b['FFN_Gate_Up_Linear']:.2f}",
+            f"{b['FFN_SiLU_Mul']:.2f}",
+            f"{b['FFN_Down_Linear']:.2f}",
+            f"{rmsnorms_total:.2f}",
             f"{b['LM_Head']:.2f}",
             f"{b['Sampling']:.2f}",
-            f"{b['Tokenizer_Decode']:.2f}",
-            bar_text,
         )
 
     console.print(table)
@@ -241,26 +227,22 @@ def generate_html_dashboard(
     output_file: str = "profile_dashboard.html",
 ):
     """
-    Generates a zero-dependency, self-contained, interactive HTML/SVG dashboard.
-    Works 100% offline with interactive hover tooltips, latency curves,
-    and stacked bar charts.
+    Generates a zero-dependency, self-contained interactive HTML/SVG dashboard
+    with 13-category fine-grained stacked bars and latency curves.
     """
     if not token_records:
         return
 
     steps = [r["step"] for r in token_records]
     total_latencies = [r["total_latency_ms"] for r in token_records]
-    categories = ["Attention", "FFN", "RMSNorm", "LM_Head", "Sampling", "Embedding", "Tokenizer_Decode"]
 
-    num_tokens = len(steps)
     total_time = sum(total_latencies)
-    avg_latency = total_time / num_tokens if num_tokens else 0.0
+    avg_latency = total_time / len(token_records) if token_records else 0.0
 
-    # JSON-encoded data for client-side interactivity
     data_json = json.dumps({
         "prompt": prompt,
         "tokens": token_records,
-        "categories": categories,
+        "categories": FINE_GRAINED_CATEGORIES,
         "colors": CATEGORY_COLORS,
     }, indent=2)
 
@@ -269,7 +251,7 @@ def generate_html_dashboard(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tiny_vllm - Profiler Dashboard</title>
+    <title>tiny_vllm - Fine-Grained Profiler Dashboard</title>
     <style>
         :root {{
             --bg-color: #0f172a;
@@ -287,7 +269,7 @@ def generate_html_dashboard(
             padding: 2rem;
             line-height: 1.5;
         }}
-        .container {{ max-width: 1300px; margin: 0 auto; }}
+        .container {{ max-width: 1350px; margin: 0 auto; }}
         header {{ margin-bottom: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; }}
         h1 {{ font-size: 1.875rem; font-weight: 700; color: var(--accent-color); }}
         .subtitle {{ color: var(--text-muted); font-size: 0.95rem; margin-top: 0.25rem; }}
@@ -321,14 +303,14 @@ def generate_html_dashboard(
         .legend {{
             display: flex;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 0.75rem 1.25rem;
             margin-bottom: 1.5rem;
             padding: 0.75rem 1rem;
             background: rgba(15, 23, 42, 0.6);
             border-radius: 0.5rem;
         }}
-        .legend-item {{ display: flex; align-items: center; font-size: 0.85rem; }}
-        .legend-color {{ width: 14px; height: 14px; border-radius: 3px; margin-right: 0.5rem; }}
+        .legend-item {{ display: flex; align-items: center; font-size: 0.8rem; }}
+        .legend-color {{ width: 14px; height: 14px; border-radius: 3px; margin-right: 0.4rem; flex-shrink: 0; }}
 
         svg {{ width: 100%; height: auto; overflow: visible; }}
         .chart-svg text {{ font-family: monospace; font-size: 11px; fill: var(--text-muted); }}
@@ -353,85 +335,79 @@ def generate_html_dashboard(
         table {{
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             text-align: left;
         }}
-        th, td {{ padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); }}
-        th {{ background: rgba(15, 23, 42, 0.8); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }}
+        th, td {{ padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border-color); }}
+        th {{ background: rgba(15, 23, 42, 0.8); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; }}
         tr:hover {{ background: rgba(56, 189, 248, 0.05); }}
-        .token-tag {{
-            background: rgba(56, 189, 248, 0.15);
-            color: #38bdf8;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: monospace;
-        }}
     </style>
 </head>
 <body>
     <div id="tooltip" class="tooltip"></div>
     <div class="container">
         <header>
-            <h1>⚡ tiny_vllm - Profiler & Latency Composition</h1>
-            <div class="subtitle">Architecture: Llama-3.2-1B-Instruct (16 Layers, GQA, SwiGLU, RMSNorm) | Autoregressive No-KV-Cache Loop</div>
+            <h1>⚡ tiny_vllm - Fine-Grained Latency Composition</h1>
+            <div class="subtitle">Sampled Profiling (Step 0, every 100 steps, and last step) | LLaMA-3.2-1B Architecture</div>
         </header>
 
         <div class="grid-stats">
             <div class="card">
-                <div class="card-label">Generated Tokens</div>
-                <div class="card-value">{num_tokens}</div>
+                <div class="card-label">Sampled Steps</div>
+                <div class="card-value">{len(token_records)}</div>
             </div>
             <div class="card">
-                <div class="card-label">Total Generation Time</div>
-                <div class="card-value">{total_time:.2f} <span style="font-size:1rem;color:#94a3b8;">ms</span></div>
-            </div>
-            <div class="card">
-                <div class="card-label">Avg Token Latency (TPOT)</div>
+                <div class="card-label">Avg Sampled Latency</div>
                 <div class="card-value">{avg_latency:.2f} <span style="font-size:1rem;color:#94a3b8;">ms</span></div>
             </div>
             <div class="card">
-                <div class="card-label">Throughput</div>
-                <div class="card-value">{(num_tokens / (total_time / 1000.0) if total_time > 0 else 0):.1f} <span style="font-size:1rem;color:#94a3b8;">tok/s</span></div>
+                <div class="card-label">Min Latency (Initial Step)</div>
+                <div class="card-value">{min(total_latencies):.2f} <span style="font-size:1rem;color:#94a3b8;">ms</span></div>
+            </div>
+            <div class="card">
+                <div class="card-label">Max Latency (Final Step)</div>
+                <div class="card-value">{max(total_latencies):.2f} <span style="font-size:1rem;color:#94a3b8;">ms</span></div>
             </div>
         </div>
 
         <!-- 1. STACKED BAR CHART -->
         <div class="chart-section">
-            <div class="chart-title">1. Per-Token Op-Time Composition (Stacked Bar Chart)</div>
+            <div class="chart-title">1. Fine-Grained Op-Time Composition per Sampled Step</div>
             <div class="chart-desc">
-                Shows exact time spent (ms) inside each component for each generated token step.
-                Notice how without a KV cache, Attention and FFN times increase as sequence length grows!
+                Stacked breakdown of time spent in QKV Linear, RoPE, Attention Compute, O Linear, SwiGLU Gate/Up/Down, RMSNorms, LM Head, and Sampling.
             </div>
             <div class="legend" id="op-legend"></div>
             <div id="stacked-bar-container"></div>
         </div>
 
-        <!-- 2. PER-TOKEN LATENCY CURVE -->
+        <!-- 2. LATENCY TREND CURVE -->
         <div class="chart-section">
-            <div class="chart-title">2. Per-Token Latency Trend (ms vs Token Step)</div>
+            <div class="chart-title">2. Latency Scaling Curve across Sequence Length</div>
             <div class="chart-desc">
-                Step-by-step latency curve illustrating autoregressive decode scaling.
+                Visualizes how per-token latency scales without a KV cache as sequence length grows.
             </div>
             <div id="line-chart-container"></div>
         </div>
 
-        <!-- 3. DETAILED DATA TABLE -->
+        <!-- 3. DATA TABLE -->
         <div class="chart-section">
-            <div class="chart-title">3. Detailed Execution Metrics Table</div>
+            <div class="chart-title">3. Detailed Numerical Breakdown Table</div>
             <div style="overflow-x: auto;">
                 <table id="metrics-table">
                     <thead>
                         <tr>
                             <th>Step</th>
-                            <th>Token ID</th>
-                            <th>Decoded Text</th>
                             <th>Total (ms)</th>
-                            <th>Attention</th>
-                            <th>FFN</th>
-                            <th>RMSNorm</th>
+                            <th>QKV Proj</th>
+                            <th>RoPE</th>
+                            <th>Attn Core</th>
+                            <th>O Proj</th>
+                            <th>Gate/Up</th>
+                            <th>SiLU</th>
+                            <th>Down</th>
+                            <th>RMSNorms</th>
                             <th>LM Head</th>
                             <th>Sampling</th>
-                            <th>Tokenizer</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>
@@ -452,7 +428,7 @@ def generate_html_dashboard(
             legendContainer.appendChild(item);
         }});
 
-        // Tooltip handling
+        // Tooltip
         const tooltip = document.getElementById('tooltip');
         function showTooltip(e, html) {{
             tooltip.innerHTML = html;
@@ -464,21 +440,21 @@ def generate_html_dashboard(
             tooltip.style.display = 'none';
         }}
 
-        // Render Stacked Bar Chart (Inline SVG)
+        // Render Stacked Bar Chart
         function renderStackedBarChart() {{
             const container = document.getElementById('stacked-bar-container');
             const data = profileData.tokens;
-            const w = 1150, h = 340, padL = 60, padR = 20, padT = 20, padB = 40;
+            const w = 1200, h = 380, padL = 70, padR = 20, padT = 20, padB = 40;
             const chartW = w - padL - padR;
             const chartH = h - padT - padB;
 
             const maxVal = Math.max(...data.map(d => d.total_latency_ms)) * 1.15 || 1;
-            const barW = Math.max(8, Math.min(40, (chartW / data.length) * 0.7));
+            const barW = Math.max(12, Math.min(45, (chartW / data.length) * 0.65));
             const stepW = chartW / data.length;
 
             let svg = `<svg viewBox="0 0 ${{w}} ${{h}}" class="chart-svg">`;
 
-            // Grid lines & Y Axis
+            // Grid lines
             for (let i = 0; i <= 5; i++) {{
                 const yVal = (maxVal / 5) * i;
                 const yPos = padT + chartH - (chartH / 5) * i;
@@ -486,14 +462,13 @@ def generate_html_dashboard(
                 svg += `<text x="${{padL - 10}}" y="${{yPos + 4}}" text-anchor="end">${{yVal.toFixed(1)}} ms</text>`;
             }}
 
-            // Bars
             data.forEach((d, idx) => {{
                 const x = padL + idx * stepW + (stepW - barW) / 2;
                 let currentBottom = padT + chartH;
 
                 profileData.categories.forEach(cat => {{
                     const val = d.breakdown[cat] || 0;
-                    if (val <= 0) return;
+                    if (val <= 0.001) return;
                     const barH = (val / maxVal) * chartH;
                     const y = currentBottom - barH;
                     const color = profileData.colors[cat] || '#888';
@@ -505,7 +480,6 @@ def generate_html_dashboard(
                     currentBottom = y;
                 }});
 
-                // X-axis label
                 svg += `<text x="${{x + barW/2}}" y="${{padT + chartH + 18}}" text-anchor="middle">#${{d.step}}</text>`;
             }});
 
@@ -513,11 +487,11 @@ def generate_html_dashboard(
             container.innerHTML = svg;
         }}
 
-        // Render Latency Curve (Inline SVG)
+        // Render Latency Curve
         function renderLineChart() {{
             const container = document.getElementById('line-chart-container');
             const data = profileData.tokens;
-            const w = 1150, h = 240, padL = 60, padR = 20, padT = 20, padB = 40;
+            const w = 1200, h = 260, padL = 70, padR = 20, padT = 20, padB = 40;
             const chartW = w - padL - padR;
             const chartH = h - padT - padB;
 
@@ -533,7 +507,6 @@ def generate_html_dashboard(
 
             let svg = `<svg viewBox="0 0 ${{w}} ${{h}}" class="chart-svg">`;
 
-            // Grid lines
             for (let i = 0; i <= 4; i++) {{
                 const yVal = (maxVal / 4) * i;
                 const yPos = padT + chartH - (chartH / 4) * i;
@@ -541,15 +514,13 @@ def generate_html_dashboard(
                 svg += `<text x="${{padL - 10}}" y="${{yPos + 4}}" text-anchor="end">${{yVal.toFixed(1)}} ms</text>`;
             }}
 
-            // Line
             svg += `<polyline points="${{points.join(' ')}}" fill="none" stroke="#38bdf8" stroke-width="2.5" />`;
 
-            // Dots
             data.forEach((d, idx) => {{
                 const x = padL + idx * stepW;
                 const y = padT + chartH - (d.total_latency_ms / maxVal) * chartH;
                 svg += `<circle cx="${{x}}" cy="${{y}}" r="5" fill="#0f172a" stroke="#38bdf8" stroke-width="2" style="cursor:pointer;"
-                    onmousemove="showTooltip(event, '<strong>Token Step ${{d.step}}</strong><br/>Latency: ${{d.total_latency_ms.toFixed(2)}} ms<br/>Decoded: &quot;${{d.token_text || ''}}&quot;')"
+                    onmousemove="showTooltip(event, '<strong>Step ${{d.step}}</strong><br/>Latency: ${{d.total_latency_ms.toFixed(2)}} ms')"
                     onmouseleave="hideTooltip()" />`;
                 svg += `<text x="${{x}}" y="${{padT + chartH + 18}}" text-anchor="middle">#${{d.step}}</text>`;
             }});
@@ -564,24 +535,26 @@ def generate_html_dashboard(
             tbody.innerHTML = '';
             profileData.tokens.forEach(d => {{
                 const b = d.breakdown;
+                const rmsnorms = b.RMSNorm_Attn + b.RMSNorm_FFN + b.RMSNorm_Final;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><strong>#${{d.step}}</strong></td>
-                    <td>${{d.token_id !== null ? d.token_id : '-'}}</td>
-                    <td><span class="token-tag">${{d.token_text ? d.token_text : ''}}</span></td>
                     <td><strong>${{d.total_latency_ms.toFixed(2)}}</strong></td>
-                    <td style="color:${{profileData.colors.Attention}}">${{b.Attention.toFixed(2)}}</td>
-                    <td style="color:${{profileData.colors.FFN}}">${{b.FFN.toFixed(2)}}</td>
-                    <td style="color:${{profileData.colors.RMSNorm}}">${{b.RMSNorm.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.QKV_Linear}}">${{b.QKV_Linear.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.RoPE}}">${{b.RoPE.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.Attn_Compute}}">${{b.Attn_Compute.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.O_Linear}}">${{b.O_Linear.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.FFN_Gate_Up_Linear}}">${{b.FFN_Gate_Up_Linear.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.FFN_SiLU_Mul}}">${{b.FFN_SiLU_Mul.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.FFN_Down_Linear}}">${{b.FFN_Down_Linear.toFixed(2)}}</td>
+                    <td style="color:${{profileData.colors.RMSNorm_Attn}}">${{rmsnorms.toFixed(2)}}</td>
                     <td style="color:${{profileData.colors.LM_Head}}">${{b.LM_Head.toFixed(2)}}</td>
                     <td style="color:${{profileData.colors.Sampling}}">${{b.Sampling.toFixed(2)}}</td>
-                    <td style="color:${{profileData.colors.Tokenizer_Decode}}">${{b.Tokenizer_Decode.toFixed(2)}}</td>
                 `;
                 tbody.appendChild(tr);
             }});
         }}
 
-        // Initialize Charts
         renderStackedBarChart();
         renderLineChart();
         renderTable();
@@ -606,7 +579,7 @@ def save_json_metrics(
         "prompt": prompt,
         "tokens": token_records,
         "summary": {
-            "num_tokens": len(token_records),
+            "sampled_steps": len(token_records),
             "total_latency_ms": sum(r["total_latency_ms"] for r in token_records),
             "avg_latency_ms": (
                 sum(r["total_latency_ms"] for r in token_records) / len(token_records)
@@ -617,4 +590,3 @@ def save_json_metrics(
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     print(f"[*] Token metrics JSON saved at: {output_file}")
-
