@@ -46,7 +46,6 @@ from profile_visualizer import (
     extract_single_token_metric,
     extract_timeline_from_trace,
     render_terminal_dashboard,
-    generate_html_dashboard,
     save_json_metrics,
 )
 
@@ -78,14 +77,13 @@ class ProfiledAttention(nn.Module):
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
         bsz, seqlen, _ = x.shape
 
-        # 1. Linear Projections
-        with torch.profiler.record_function("QKV_Linear"):
-            with torch.profiler.record_function("Q_Linear"):
-                xq = self.q_proj(x).view(bsz, seqlen, self.n_heads, self.head_dim)
-            with torch.profiler.record_function("K_Linear"):
-                xk = self.k_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
-            with torch.profiler.record_function("V_Linear"):
-                xv = self.v_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
+        # 1. Linear Projections (separated to track GQA 4:1:1 asymmetry)
+        with torch.profiler.record_function("Q_Linear"):
+            xq = self.q_proj(x).view(bsz, seqlen, self.n_heads, self.head_dim)
+        with torch.profiler.record_function("K_Linear"):
+            xk = self.k_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
+        with torch.profiler.record_function("V_Linear"):
+            xv = self.v_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
 
         # 2. RoPE
         with torch.profiler.record_function("RoPE"):
@@ -448,13 +446,12 @@ def main():
             r["step"]: r["timeline"] for r in token_records if "timeline" in r and r["timeline"]
         }
 
-        html_file = os.path.join(args.profile_output_dir, "profile_dashboard.html")
-        generate_html_dashboard(token_records, prompt=args.prompt, output_file=html_file, timeline_records=timeline_records)
-
         json_file = os.path.join(args.profile_output_dir, "token_metrics.json")
         save_json_metrics(token_records, prompt=args.prompt, output_file=json_file, timeline_records=timeline_records)
 
-        print(f"\n[✓] Fine-grained sampled profiling outputs saved to: {os.path.abspath(args.profile_output_dir)}")
+        print(f"\n[✓] Profiling complete. Metrics saved to: {os.path.abspath(json_file)}")
+        print(f"[*] To generate the HTML dashboard, run:")
+        print(f"    .venv/bin/python profile_visualizer.py --json {json_file}")
 
 
 if __name__ == "__main__":
