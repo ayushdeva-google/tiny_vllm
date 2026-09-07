@@ -269,20 +269,15 @@ def extract_timeline_from_trace(
         timeline_events.append({
             "row": "cpu",
             "name": "CPU Sync Stall: Waiting for .item()",
-            "sub": "Host thread blocked in cudaStreamSynchronize",
-            "sub": "Host thread blocked waiting for GPU",
+            "sub": "Host thread blocked waiting for GPU (.item())",
             "cat": "cat-cpu-stall",
-            "start_ms": round(stall_start_ms, 3),
             "start_ms": round(last_cpu_end_ms, 3),
             "dur_ms": round(stall_dur, 3),
             "domain": "STALL (Host Synchronizing)",
             "step": "Sampling sync barrier (.item())",
-            "step": "Sampling sync barrier",
             "other": "GPU is finishing execution",
             "hw": "Host CPU Thread (Blocked/Sleeping)",
             "vram_note": "Blocked on DtoH token return",
-            "hw": "Host CPU Thread (Sleeping)",
-            "vram_note": "Blocked on DtoH",
         })
 
     # 3. Track 2: Memory Track (PCIe transfers + VRAM weight & KV cache streaming)
@@ -384,45 +379,50 @@ def extract_timeline_from_trace(
         })
 
         if any(term in op_name for term in ["Linear", "Head", "Attn", "Embedding", "Gate", "Up", "Down"]):
+            bytes_mb = None
             if "Q_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM Q_proj (4.2 MB)"
-                bytes_desc = "4.2 MB read @ ~940 GB/s"
+                vram_name = f"L{current_layer}: VRAM Q_proj (8.4 MB)"
+                bytes_mb = 8.39
             elif "K_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM K_proj (4.2 MB)"
-                bytes_desc = "4.2 MB read @ ~940 GB/s"
+                vram_name = f"L{current_layer}: VRAM K_proj (2.1 MB)"
+                bytes_mb = 2.10
             elif "V_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM V_proj (4.2 MB)"
-                bytes_desc = "4.2 MB read @ ~940 GB/s"
+                vram_name = f"L{current_layer}: VRAM V_proj (2.1 MB)"
+                bytes_mb = 2.10
             elif "QKV" in op_name:
                 vram_name = f"L{current_layer}: VRAM QKV Weights (12.6 MB)"
-                bytes_desc = "12.6 MB read @ ~940 GB/s"
+                bytes_mb = 12.58
             elif "O_Linear" in op_name:
                 vram_name = f"L{current_layer}: VRAM O_proj (8.4 MB)"
-                bytes_desc = "8.4 MB read @ ~950 GB/s"
+                bytes_mb = 8.39
             elif "Gate_Linear" in op_name:
                 vram_name = f"L{current_layer}: VRAM Gate_proj (33.5 MB)"
-                bytes_desc = "33.5 MB read @ ~980 GB/s"
+                bytes_mb = 33.55
             elif "Up_Linear" in op_name:
                 vram_name = f"L{current_layer}: VRAM Up_proj (33.5 MB)"
-                bytes_desc = "33.5 MB read @ ~980 GB/s"
+                bytes_mb = 33.55
             elif "Gate_Up" in op_name:
                 vram_name = f"L{current_layer}: VRAM Gate & Up (67.1 MB)"
-                bytes_desc = "67.1 MB read @ ~980 GB/s"
+                bytes_mb = 67.11
             elif "Down" in op_name:
                 vram_name = f"L{current_layer}: VRAM Down_proj (33.5 MB)"
-                bytes_desc = "33.5 MB read @ ~970 GB/s"
+                bytes_mb = 33.55
             elif "Head" in op_name:
-                vram_name = "VRAM: LM_Head Weights (525 MB)"
-                bytes_desc = "525 MB read @ ~975 GB/s"
+                vram_name = "VRAM: LM_Head Weights (525.3 MB)"
+                bytes_mb = 525.34
             elif "Embedding" in op_name:
-                vram_name = "VRAM: Embedding Weights (525 MB)"
-                bytes_desc = "Token embedding lookup"
+                vram_name = "VRAM: Embedding Weights (525.3 MB)"
+                bytes_desc = "Token embedding table lookup"
             elif "Attn" in op_name:
                 vram_name = f"L{current_layer}: VRAM KV Cache States"
                 bytes_desc = f"KV cache read/write (Context={seq_len or 'N'})"
             else:
                 vram_name = f"L{current_layer}: VRAM {op_name}"
                 bytes_desc = "VRAM read/write"
+
+            if bytes_mb is not None:
+                bw_gb_s = min(300.0, (bytes_mb / (rel_dur / 1000.0)) / 1024.0) if rel_dur > 0 else 0.0
+                bytes_desc = f"{bytes_mb:.1f} MB read @ ~{bw_gb_s:.0f} GB/s (L4 Bus)"
 
             timeline_events.append({
                 "row": "memory-ops",

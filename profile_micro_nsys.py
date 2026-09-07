@@ -25,10 +25,10 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print("[*] Loading LLaMA-3.2-1B-Instruct model and weights...")
-    model_args = ModelArgs()
-    model = ProfiledTransformer(model_args)
-    load_hf_safetensors(model)
-    model.to(device=device, dtype=torch.bfloat16)
+    model_args = ModelArgs.llama_3_2_1b()
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    model = ProfiledTransformer(model_args).to(device=device, dtype=dtype)
+    load_hf_safetensors(model, device=device, dtype=dtype)
     model.eval()
 
     tokenizer = AutoTokenizer.from_pretrained("unsloth/Llama-3.2-1B-Instruct")
