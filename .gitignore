@@ -29,6 +29,9 @@ venv.bak/
 
 # Profiler, Traces & Large Model Outputs
 profile_results/
+profile_export/
+tools/
+*.html
 *.sqlite
 *.nsys-rep
 *.qdrep

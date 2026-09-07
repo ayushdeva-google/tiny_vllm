@@ -43,6 +43,7 @@ from llama_inference import (
 )
 from profile_visualizer import (
     extract_single_token_metric,
+    extract_timeline_from_trace,
     render_terminal_dashboard,
     generate_html_dashboard,
     save_json_metrics,
@@ -78,9 +79,12 @@ class ProfiledAttention(nn.Module):
 
         # 1. Linear Projections
         with torch.profiler.record_function("QKV_Linear"):
-            xq = self.q_proj(x).view(bsz, seqlen, self.n_heads, self.head_dim)
-            xk = self.k_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
-            xv = self.v_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
+            with torch.profiler.record_function("Q_Linear"):
+                xq = self.q_proj(x).view(bsz, seqlen, self.n_heads, self.head_dim)
+            with torch.profiler.record_function("K_Linear"):
+                xk = self.k_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
+            with torch.profiler.record_function("V_Linear"):
+                xv = self.v_proj(x).view(bsz, seqlen, self.n_kv_heads, self.head_dim)
 
         # 2. RoPE
         with torch.profiler.record_function("RoPE"):
@@ -127,8 +131,10 @@ class ProfiledFeedForward(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         with torch.profiler.record_function("FFN_Gate_Up_Linear"):
-            g = self.gate_proj(x)
-            u = self.up_proj(x)
+            with torch.profiler.record_function("Gate_Linear"):
+                g = self.gate_proj(x)
+            with torch.profiler.record_function("Up_Linear"):
+                u = self.up_proj(x)
 
         with torch.profiler.record_function("FFN_SiLU_Mul"):
             act = F.silu(g) * u
@@ -220,6 +226,7 @@ def generate_profiled(
     max_new_tokens: int = 50,
     profile: bool = True,
     profile_interval: int = 100,
+    profile_output_dir: str = "profile_results",
     ignore_eos: bool = False,
     temperature: float = 0.0,
     top_k: Optional[int] = None,
@@ -266,8 +273,8 @@ def generate_profiled(
             # Profile only this isolated step
             with torch.profiler.profile(
                 activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-                record_shapes=False,
-                profile_memory=False,
+                record_shapes=True,
+                profile_memory=True,
             ) as prof_step:
                 with torch.profiler.record_function(f"token_{step}"):
                     logits = model(curr_ids)
@@ -291,8 +298,26 @@ def generate_profiled(
             token_str = tokenizer.decode([token_val], clean_up_tokenization_spaces=False)
             print(token_str, end="", flush=True)
 
-            # Extract fine-grained metric for this step
+            # Export trace for timeline visualization
+            traces_dir = os.path.join(profile_output_dir, "traces")
+            os.makedirs(traces_dir, exist_ok=True)
+            trace_file = os.path.join(traces_dir, f"step_{step}_trace.json")
+            prof_step.export_chrome_trace(trace_file)
+
+            # Extract fine-grained metric and timeline for this step
             step_record = extract_single_token_metric(prof_step, step, token_val, token_str)
+            seq_len = curr_ids.shape[-1]
+            step_timeline = extract_timeline_from_trace(
+                trace_path=trace_file,
+                step_idx=step,
+                token_id=token_val,
+                token_text=token_str,
+                seq_len=seq_len,
+            )
+            step_record["timeline"] = step_timeline
+            if "three_metrics" in step_timeline:
+                step_record["three_metrics"] = step_timeline["three_metrics"]
+                step_record["total_latency_ms"] = step_timeline["three_metrics"]["total_latency_ms"]
             token_records.append(step_record)
         else:
             # Un-profiled native execution
@@ -379,6 +404,7 @@ def main():
         max_new_tokens=args.max_new_tokens,
         profile=args.profile,
         profile_interval=args.profile_interval,
+        profile_output_dir=args.profile_output_dir,
         ignore_eos=args.ignore_eos,
         temperature=args.temperature,
         top_k=args.top_k,
@@ -389,11 +415,15 @@ def main():
         print(f"\n[*] Rendering dashboard for {len(token_records)} sampled checkpoints...")
         render_terminal_dashboard(token_records, prompt=args.prompt)
 
+        timeline_records = {
+            r["step"]: r["timeline"] for r in token_records if "timeline" in r and r["timeline"]
+        }
+
         html_file = os.path.join(args.profile_output_dir, "profile_dashboard.html")
-        generate_html_dashboard(token_records, prompt=args.prompt, output_file=html_file)
+        generate_html_dashboard(token_records, prompt=args.prompt, output_file=html_file, timeline_records=timeline_records)
 
         json_file = os.path.join(args.profile_output_dir, "token_metrics.json")
-        save_json_metrics(token_records, prompt=args.prompt, output_file=json_file)
+        save_json_metrics(token_records, prompt=args.prompt, output_file=json_file, timeline_records=timeline_records)
 
         print(f"\n[✓] Fine-grained sampled profiling outputs saved to: {os.path.abspath(args.profile_output_dir)}")
 
