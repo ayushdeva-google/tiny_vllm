@@ -93,13 +93,6 @@ Run [eval_quality.py](file:///home/ayushdeva_google_com/tiny_vllm/eval_quality.p
 python eval_quality.py
 ```
 
-### Full Automated Profiling Suite Orchestrator
-Run [run_profiling_suite.py](file:///home/ayushdeva_google_com/tiny_vllm/run_profiling_suite.py) to automate PyTorch profiling, Nsight Systems kernel traces, and report archiving:
-
-```bash
-python run_profiling_suite.py
-```
-
 ---
 
 ## Deep-Dive Documentation
@@ -108,3 +101,4 @@ For detailed analysis of GPU execution mechanics and memory systems, see the gui
 - [GPU Memory Wait & Scheduling FAQ](file:///home/ayushdeva_google_com/tiny_vllm/docs/GPU_MEMORY_WAIT_AND_SCHEDULING_FAQ.md)
 - [Inference Architecture & Hardware Interplay](file:///home/ayushdeva_google_com/tiny_vllm/docs/INFERENCE_ARCHITECTURE_AND_HARDWARE_INTERPLAY.md)
 - [Profiling Experiments & Systems Learnings](file:///home/ayushdeva_google_com/tiny_vllm/docs/PROFILING_EXPERIMENTS_AND_SYSTEMS_LEARNINGS.md)
+
