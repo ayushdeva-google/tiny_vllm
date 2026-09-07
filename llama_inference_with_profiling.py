@@ -23,6 +23,7 @@ to profile up to 2048+ tokens with zero memory bloat.
 
 import os
 import math
+import time
 import argparse
 from dataclasses import dataclass
 from typing import Optional, Tuple, List, Dict, Any
@@ -269,6 +270,10 @@ def generate_profiled(
             (step == 0) or (step % profile_interval == 0) or (step == max_new_tokens - 1)
         )
 
+        if device == "cuda":
+            torch.cuda.synchronize()
+        t_step_start = time.perf_counter()
+
         if is_sample:
             # Profile only this isolated step
             with torch.profiler.profile(
@@ -292,7 +297,10 @@ def generate_profiled(
                             next_token_id = torch.multinomial(probs, num_samples=1)
                         token_val = next_token_id.item()
 
-            torch.cuda.synchronize()
+            if device == "cuda":
+                torch.cuda.synchronize()
+            t_step_end = time.perf_counter()
+            native_latency_ms = (t_step_end - t_step_start) * 1000.0
 
             # Detokenize
             token_str = tokenizer.decode([token_val], clean_up_tokenization_spaces=False)
@@ -318,6 +326,9 @@ def generate_profiled(
             if "three_metrics" in step_timeline:
                 step_record["three_metrics"] = step_timeline["three_metrics"]
                 step_record["total_latency_ms"] = step_timeline["three_metrics"]["total_latency_ms"]
+            else:
+                step_record["total_latency_ms"] = round(native_latency_ms, 2)
+            step_record["is_sampled"] = True
             token_records.append(step_record)
         else:
             # Un-profiled native execution
@@ -335,8 +346,25 @@ def generate_profiled(
                 next_token_id = torch.multinomial(probs, num_samples=1)
 
             token_val = next_token_id.item()
+            if device == "cuda":
+                torch.cuda.synchronize()
+            t_step_end = time.perf_counter()
+            native_latency_ms = (t_step_end - t_step_start) * 1000.0
+
             token_str = tokenizer.decode([token_val], clean_up_tokenization_spaces=False)
             print(token_str, end="", flush=True)
+
+            step_record = {
+                "step": step,
+                "token_id": token_val,
+                "token_text": token_str,
+                "total_latency_ms": round(native_latency_ms, 2),
+                "is_sampled": False,
+                "breakdown": None,
+                "three_metrics": None,
+                "timeline": None,
+            }
+            token_records.append(step_record)
 
         if not ignore_eos and token_val in stop_token_ids:
             # If early stop and last step wasn't profiled, we still captured up to this point
@@ -412,7 +440,8 @@ def main():
     )
 
     if args.profile and token_records:
-        print(f"\n[*] Rendering dashboard for {len(token_records)} sampled checkpoints...")
+        sampled_records = [r for r in token_records if r.get("is_sampled", True) and r.get("breakdown")]
+        print(f"\n[*] Rendering dashboard for {len(token_records)} tokens ({len(sampled_records)} sampled checkpoints)...")
         render_terminal_dashboard(token_records, prompt=args.prompt)
 
         timeline_records = {
