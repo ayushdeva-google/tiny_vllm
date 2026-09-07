@@ -109,70 +109,70 @@ OPERATION_METADATA = {
         "name": "Token Embedding Table",
         "category": "Embedding",
         "badge": "Embed",
-        "desc": "Vocabulary token lookup table mapping token ID to initial 2048-dim embedding vector",
-        "scaling": "Flat (Single row lookup in 525 MB embedding matrix)",
+        "desc": "Vocabulary token lookup table mapping token ID to initial embedding vector",
+        "scaling": "Flat (Single row lookup in embedding matrix)",
     },
     "RMSNorm_Attn": {
         "name": "Pre-Attention RMSNorm",
         "category": "Normalization",
         "badge": "Norm",
-        "desc": "Root-mean-square normalization preceding attention blocks across 16 layers",
+        "desc": "Root-mean-square normalization preceding attention blocks across all layers",
         "scaling": "Flat (Fast memory-bandwidth bound vector kernel)",
     },
     "Q_Linear": {
         "name": "Query Projection (W_q)",
         "category": "Attention Projections",
         "badge": "Q",
-        "desc": "Query linear projection across 16 layers (2048 -> 32*64 = 2048, 8.39 MB weights). 4x larger than K or V due to GQA.",
-        "scaling": "Flat (Memory-bandwidth bound streaming 8.39 MB weights per layer)",
+        "desc": "Query linear projection across all layers (~4x larger than K or V due to GQA)",
+        "scaling": "Flat (Memory-bandwidth bound streaming projection weights per layer)",
     },
     "K_Linear": {
         "name": "Key Projection (W_k)",
         "category": "Attention Projections",
         "badge": "K",
-        "desc": "Key linear projection across 16 layers (2048 -> 8*64 = 512, 2.10 MB weights, GQA 4:1 ratio)",
-        "scaling": "Flat (Memory-bandwidth bound streaming 2.10 MB weights per layer)",
+        "desc": "Key linear projection across all layers (GQA sharing with 4:1 ratio to Query)",
+        "scaling": "Flat (Memory-bandwidth bound streaming projection weights per layer)",
     },
     "V_Linear": {
         "name": "Value Projection (W_v)",
         "category": "Attention Projections",
         "badge": "V",
-        "desc": "Value linear projection across 16 layers (2048 -> 8*64 = 512, 2.10 MB weights, GQA 4:1 ratio)",
-        "scaling": "Flat (Memory-bandwidth bound streaming 2.10 MB weights per layer)",
+        "desc": "Value linear projection across all layers (GQA sharing with 4:1 ratio to Query)",
+        "scaling": "Flat (Memory-bandwidth bound streaming projection weights per layer)",
     },
     "FFN_Gate_Up_Linear": {
         "name": "FFN Gate & Up Projections",
         "category": "Feed-Forward (GEMV)",
         "badge": "FFN",
-        "desc": "SwiGLU gate_proj & up_proj matrix multiplication across 16 layers (2048 -> 8192)",
-        "scaling": "Flat (Memory-bandwidth bound streaming 2.46 GB weights)",
+        "desc": "SwiGLU gate_proj & up_proj matrix multiplications across all layers",
+        "scaling": "Flat (Memory-bandwidth bound streaming feed-forward weights)",
     },
     "FFN_Down_Linear": {
         "name": "FFN Down Projection",
         "category": "Feed-Forward (GEMV)",
         "badge": "FFN",
-        "desc": "SwiGLU down_proj matrix multiplication across 16 layers (8192 -> 2048)",
+        "desc": "SwiGLU down_proj matrix multiplication across all layers",
         "scaling": "Flat (Memory-bandwidth bound streaming weights)",
     },
     "LM_Head": {
         "name": "LM Head Unembedding",
         "category": "Output Projection",
         "badge": "Head",
-        "desc": "Linear projection from hidden dimension 2048 to 128,256 vocabulary logits",
-        "scaling": "Flat (Streams 525 MB vocabulary weights per token)",
+        "desc": "Linear projection from hidden dimension to vocabulary logits",
+        "scaling": "Flat (Streams vocabulary weights for final token slice)",
     },
     "QKV_Linear": {
         "name": "Combined Q, K, V Projections",
         "category": "Attention Projections",
         "badge": "Attn",
-        "desc": "Combined Query, Key, and Value linear projections across 16 layers",
+        "desc": "Combined Query, Key, and Value linear projections across all layers",
         "scaling": "Flat (Memory-bandwidth bound streaming weights)",
     },
     "O_Linear": {
         "name": "Attention Output Projection",
         "category": "Attention Projections",
         "badge": "Attn",
-        "desc": "Multi-head attention output projection across 16 layers (2048 -> 2048)",
+        "desc": "Multi-head attention output projection across all layers",
         "scaling": "Flat (Memory-bandwidth bound streaming weights)",
     },
     "Attn_Compute": {
@@ -189,18 +189,11 @@ OPERATION_METADATA = {
         "desc": "Rotary position embedding (complex rotations applied to query and key vectors)",
         "scaling": "Flat (Fast on-chip vector math)",
     },
-    "RMSNorm_Attn": {
-        "name": "Pre-Attention RMSNorm",
-        "category": "Normalization",
-        "badge": "Norm",
-        "desc": "Root-mean-square normalization preceding attention blocks across 16 layers",
-        "scaling": "Flat (Fast memory-bandwidth bound vector kernel)",
-    },
     "RMSNorm_FFN": {
         "name": "Pre-FFN RMSNorm",
         "category": "Normalization",
         "badge": "Norm",
-        "desc": "Root-mean-square normalization preceding feed-forward blocks across 16 layers",
+        "desc": "Root-mean-square normalization preceding feed-forward blocks across all layers",
         "scaling": "Flat (Fast memory-bandwidth bound vector kernel)",
     },
     "RMSNorm_Final": {
@@ -214,7 +207,7 @@ OPERATION_METADATA = {
         "name": "SiLU Activation & Gating",
         "category": "Activation Function",
         "badge": "FFN",
-        "desc": "Elementwise SiLU(gate) * up gating vector multiplication across 16 layers",
+        "desc": "Elementwise SiLU(gate) * up gating vector multiplication across all layers",
         "scaling": "Flat (Vector memory bandwidth bound)",
     },
     "Sampling": {
@@ -509,39 +502,38 @@ def extract_timeline_from_trace(
         })
 
         if any(term in op_name for term in ["Linear", "Head", "Attn", "Embedding", "Gate", "Up", "Down"]):
-            bytes_mb = None
             if "Q_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM Q_proj (8.4 MB)"
-                bytes_mb = 8.39
+                vram_name = f"L{current_layer}: VRAM Q_proj Weights"
+                bytes_desc = "Streaming Query projection weights"
             elif "K_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM K_proj (2.1 MB)"
-                bytes_mb = 2.10
+                vram_name = f"L{current_layer}: VRAM K_proj Weights"
+                bytes_desc = "Streaming Key projection weights (GQA)"
             elif "V_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM V_proj (2.1 MB)"
-                bytes_mb = 2.10
+                vram_name = f"L{current_layer}: VRAM V_proj Weights"
+                bytes_desc = "Streaming Value projection weights (GQA)"
             elif "QKV" in op_name:
-                vram_name = f"L{current_layer}: VRAM QKV Weights (12.6 MB)"
-                bytes_mb = 12.58
+                vram_name = f"L{current_layer}: VRAM QKV Weights"
+                bytes_desc = "Streaming QKV projection weights"
             elif "O_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM O_proj (8.4 MB)"
-                bytes_mb = 8.39
+                vram_name = f"L{current_layer}: VRAM O_proj Weights"
+                bytes_desc = "Streaming attention output projection weights"
             elif "Gate_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM Gate_proj (33.5 MB)"
-                bytes_mb = 33.55
+                vram_name = f"L{current_layer}: VRAM Gate_proj Weights"
+                bytes_desc = "Streaming FFN gate projection weights"
             elif "Up_Linear" in op_name:
-                vram_name = f"L{current_layer}: VRAM Up_proj (33.5 MB)"
-                bytes_mb = 33.55
+                vram_name = f"L{current_layer}: VRAM Up_proj Weights"
+                bytes_desc = "Streaming FFN up projection weights"
             elif "Gate_Up" in op_name:
-                vram_name = f"L{current_layer}: VRAM Gate & Up (67.1 MB)"
-                bytes_mb = 67.11
+                vram_name = f"L{current_layer}: VRAM Gate & Up Weights"
+                bytes_desc = "Streaming FFN gate & up projection weights"
             elif "Down" in op_name:
-                vram_name = f"L{current_layer}: VRAM Down_proj (33.5 MB)"
-                bytes_mb = 33.55
+                vram_name = f"L{current_layer}: VRAM Down_proj Weights"
+                bytes_desc = "Streaming FFN down projection weights"
             elif "Head" in op_name:
-                vram_name = "VRAM: LM_Head Weights (525.3 MB)"
-                bytes_mb = 525.34
+                vram_name = "VRAM: LM_Head Weights"
+                bytes_desc = "Streaming vocabulary unembedding weights"
             elif "Embedding" in op_name:
-                vram_name = "VRAM: Embedding Weights (525.3 MB)"
+                vram_name = "VRAM: Embedding Weights"
                 bytes_desc = "Token embedding table lookup"
             elif "Attn" in op_name:
                 vram_name = f"L{current_layer}: VRAM Attention State"
@@ -549,10 +541,6 @@ def extract_timeline_from_trace(
             else:
                 vram_name = f"L{current_layer}: VRAM {op_name}"
                 bytes_desc = "VRAM read/write"
-
-            if bytes_mb is not None:
-                bw_gb_s = min(300.0, (bytes_mb / (rel_dur / 1000.0)) / 1024.0) if rel_dur > 0 else 0.0
-                bytes_desc = f"{bytes_mb:.1f} MB read @ ~{bw_gb_s:.0f} GB/s (L4 Bus)"
 
             timeline_events.append({
                 "row": "memory-ops",
@@ -665,7 +653,7 @@ def render_terminal_dashboard(
     if prompt:
         header_text.append(f"Prompt: {prompt}\n", style="italic white")
     header_text.append(f"Sequence Summary: {total_tokens} tokens total | Prefill: {prefill_ms:.2f} ms | Avg Decode: {avg_decode_ms:.2f} ms/token ({throughput:.1f} tok/s)\n", style="bold green")
-    header_text.append(f"Sampled Deep Checkpoints: {sampled_count} steps (step 0, every 100th, and last step)\n\n", style="dim white")
+    header_text.append(f"Sampled Deep Checkpoints: {sampled_count} checkpoints (sampled across sequence generation)\n\n", style="dim white")
     header_text.append("MEASURED HARDWARE DECOMPOSITION (Sampled Average):\n", style="bold underline yellow")
     header_text.append(f"  • Active GPU Kernel Time    : {avg_kernel_ms:6.2f} ms ({avg_kernel_ms/avg_sampled_tot*100:5.1f}%) [GPU Execution Units Active]\n", style="bold green")
     header_text.append(f"  • Host CPU Launch Gaps      : {avg_cpu_idle:6.2f} ms ({avg_cpu_idle/avg_sampled_tot*100:5.1f}%) [GPU Idle / Host Dispatch Stalls]\n\n", style="bold blue")
@@ -765,6 +753,9 @@ def _build_forward_table_html(sampled_records: List[Dict[str, Any]], forward_ops
     headers = ["Step"] + [f"{short}" for op, short, col in forward_ops] + ["Total (ms)"]
     th_cells = "".join(f"<th style='white-space:nowrap;'>{h}</th>" for h in headers)
 
+    max_attn_val = max((r.get("breakdown", {}).get("Attn_Compute", 1.0) for r in sampled_records), default=1.0)
+    max_attn_val = max(max_attn_val, 0.001)
+
     rows_html = []
     for r in sampled_records:
         step = r["step"]
@@ -780,7 +771,7 @@ def _build_forward_table_html(sampled_records: List[Dict[str, Any]], forward_ops
             elif op in ["K_Linear", "V_Linear"]:
                 tds.append(f"<td style='color:#f97316;'>{val_str}</td>")
             elif op == "Attn_Compute":
-                heat = min(1.0, val / 380.0)
+                heat = min(1.0, val / max_attn_val)
                 tds.append(f"<td style='color:#ff7675;font-weight:700;background:rgba(239,68,68,{heat*0.35:.2f});'>{val_str}</td>")
             elif op == "LM_Head":
                 tds.append(f"<td style='color:#c084fc;font-weight:700;'>{val_str}</td>")
@@ -890,13 +881,13 @@ def _build_duty_cycle_chart_svg(sampled_records: List[Dict[str, Any]]) -> str:
         grid_svg.append(f'<text x="{padL - 10}" y="{y_pos + 4}" text-anchor="end" fill="#94a3b8" font-size="11">{y_pct}%</text>')
 
     annot_svg = f"""
-        <rect x="{padL + 20}" y="{padT + 15}" width="290" height="46" rx="6" fill="rgba(30, 41, 59, 0.9)" stroke="#38bdf8" stroke-width="1" />
-        <text x="{padL + 30}" y="{padT + 34}" fill="#38bdf8" font-weight="700" font-size="12">Early Phase (Step 0–250): Host-Bound</text>
-        <text x="{padL + 30}" y="{padT + 50}" fill="#94a3b8" font-size="11">GPU idle ~75% of time waiting on CPU dispatch</text>
+        <rect x="{padL + 20}" y="{padT + 15}" width="310" height="46" rx="6" fill="rgba(30, 41, 59, 0.9)" stroke="#38bdf8" stroke-width="1" />
+        <text x="{padL + 30}" y="{padT + 34}" fill="#38bdf8" font-weight="700" font-size="12">Early Phase: Host-Bound Regime</text>
+        <text x="{padL + 30}" y="{padT + 50}" fill="#94a3b8" font-size="11">Micro-kernels finish quickly; GPU largely waits on CPU dispatch</text>
 
-        <rect x="{w - padR - 370}" y="{padT + 15}" width="360" height="46" rx="6" fill="rgba(30, 41, 59, 0.9)" stroke="#34d399" stroke-width="1" />
-        <text x="{w - padR - 360}" y="{padT + 34}" fill="#34d399" font-weight="700" font-size="12">Late Phase (Step 1000–2047): Attention-Bound</text>
-        <text x="{w - padR - 360}" y="{padT + 50}" fill="#94a3b8" font-size="11">GPU saturated at 98.4% (Quadratic sequence attention)</text>
+        <rect x="{w - padR - 380}" y="{padT + 15}" width="370" height="46" rx="6" fill="rgba(30, 41, 59, 0.9)" stroke="#34d399" stroke-width="1" />
+        <text x="{w - padR - 370}" y="{padT + 34}" fill="#34d399" font-weight="700" font-size="12">Long-Context Phase: Attention-Bound Regime</text>
+        <text x="{w - padR - 370}" y="{padT + 50}" fill="#94a3b8" font-size="11">GPU approaches near-100% saturation (Quadratic sequence attention)</text>
     """
 
     return f"""
@@ -921,13 +912,13 @@ def _build_duty_cycle_chart_svg(sampled_records: List[Dict[str, Any]]) -> str:
 def _build_glossary_html() -> str:
     cards = [
         ("⚡ Active GPU Duty Cycle (%)",
-         "The percentage of wall-clock token generation time that the GPU execution units (Streaming Multiprocessors / SMs) were actively running kernel instructions on silicon, calculated as <code>(Total Measured Kernel Duration / Total Wall-Clock Time) * 100</code>.<br><br><strong>Key Insight:</strong> At early decode, duty cycle is only ~22–36% because kernels finish fast and the GPU waits on CPU dispatch. At late decode, duty cycle reaches 98.6% as the GPU becomes fully saturated recalculating quadratic full-sequence attention without a KV cache."),
+         "The percentage of wall-clock token generation time that the GPU execution units (Streaming Multiprocessors / SMs) were actively running kernel instructions on silicon, calculated as <code>(Total Measured Kernel Duration / Total Wall-Clock Time) * 100</code>.<br><br><strong>Key Insight:</strong> At early decode, duty cycle is relatively low because kernels finish in microseconds and the GPU waits on CPU dispatch. At longer sequence lengths, duty cycle climbs toward near-100% saturation as the GPU becomes fully occupied recomputing quadratic full-sequence attention without a KV cache."),
         ("⏱️ Host CPU Launch & Driver Gaps",
-         "The measured dead time where the GPU sits 100% idle with an empty execution pipeline waiting for the host CPU Python thread to enqueue the next operation.<br><br>In PyTorch, Python overhead and CUDA driver launch latency take <strong>15 to 40 μs</strong> per kernel. When individual micro-kernels (e.g. RMSNorm, RoPE) finish in <strong>1 to 3 μs</strong>, the GPU quickly drains its queue and sits starved for work."),
+         "The measured dead time where the GPU sits idle with an empty execution pipeline waiting for the host CPU Python thread to enqueue the next operation.<br><br>In PyTorch, Python overhead and CUDA driver launch latency typically take tens of microseconds per kernel. When individual micro-kernels (e.g. RMSNorm, RoPE) execute faster than the CPU can enqueue them, the GPU drains its queue and starves for work."),
         ("🔥 Active GPU Kernel Execution Time",
-         "The total duration that GPU Streaming Multiprocessors (SMs) were actively executing CUDA kernels on silicon for the forward pass, measured directly via CUDA driver timestamps and GPU hardware timers.<br><br>Together with Host CPU Launch Gaps, it physically partitions 100% of measured wall-clock step latency into GPU execution vs. host dispatch waiting."),
+         "The total duration that GPU Streaming Multiprocessors (SMs) were actively executing CUDA kernels on silicon for the forward pass, measured directly via CUDA driver timestamps and GPU hardware timers.<br><br>Together with Host CPU Launch Gaps, it physically partitions 100% of measured wall-clock step latency into active GPU execution vs. host dispatch waiting."),
         ("🚀 Autoregressive Decode vs. Prompt Prefill",
-         "<strong>Prefill (Step 0):</strong> All prompt tokens are processed simultaneously in parallel via large Matrix-Matrix multiplies (GEMM, M = seqlen). This yields high arithmetic intensity on GPU compute cores.<br><br><strong>Decode (Steps 1–2047):</strong> Tokens are generated sequentially one by one. In our un-cached baseline, each new token step reruns the entire sequence history through all layers."),
+         "<strong>Prefill (Step 0):</strong> All prompt tokens are processed simultaneously in parallel via large Matrix-Matrix multiplies (GEMM, M = seqlen). This yields high arithmetic intensity on GPU compute cores.<br><br><strong>Decode (Subsequent Generation Steps):</strong> Tokens are generated sequentially one by one. In our un-cached baseline, each new token step reruns the entire sequence history through all layers."),
         ("📦 Key-Value (KV) Cache & Quadratic Penalty",
          "In standard LLM serving (e.g. vLLM), past Key and Value activation vectors are cached in GPU memory so each decode step only computes Q for 1 token and attends to cached K and V.<br><br><strong>Without KV cache (our current baseline):</strong> The model discards past activations, forcing full recomputation of all past tokens at every step—causing attention computation to scale as <strong>O(N²)</strong> and linear layers as <strong>O(N)</strong>."),
     ]
@@ -947,46 +938,45 @@ def _build_glossary_html() -> str:
 def _build_expected_results_html() -> str:
     cards = [
         ("🔬 Invariant 1: GQA 4:1:1 Projection Asymmetry (W_q vs. W_k & W_v)",
-         """LLaMA-3.2-1B utilizes <a href="https://arxiv.org/abs/2305.13245" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700;">Grouped-Query Attention (GQA: Ainslie et al., 2023)</a> with <strong>32 Query heads</strong> and <strong>8 Key/Value heads</strong> (head dimension 64).
+         """LLaMA-3.2-1B utilizes <a href="https://arxiv.org/abs/2305.13245" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700;">Grouped-Query Attention (GQA: Ainslie et al., 2023)</a> with <strong>32 Query heads</strong> and <strong>8 Key/Value heads</strong>.
          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
-             <li><strong>W_q Projection:</strong> 2048 ➔ 32×64 = 2048 (8.39 MB weights, 4.19M params)</li>
-             <li><strong>W_k Projection:</strong> 2048 ➔ 8×64 = 512 (2.10 MB weights, 1.05M params)</li>
-             <li><strong>W_v Projection:</strong> 2048 ➔ 8×64 = 512 (2.10 MB weights, 1.05M params)</li>
+             <li><strong>W_q Projection:</strong> Projects to 32 attention heads (4× larger parameter footprint than W_k or W_v).</li>
+             <li><strong>W_k Projection:</strong> Projects to 8 shared key heads (4:1 head ratio to Query).</li>
+             <li><strong>W_v Projection:</strong> Projects to 8 shared value heads (4:1 head ratio to Query).</li>
          </ul>
-         <strong>Empirical Proof in Our Data:</strong> In our measured breakdowns, <code>Q_Linear</code> takes <strong>~0.90 ms</strong>, while <code>K_Linear</code> (<strong>0.26 ms</strong>) and <code>V_Linear</code> (<strong>0.26 ms</strong>) are identical to each other and exactly <strong>~3.5× to 4× smaller</strong>, matching the exact physical weight footprint!"""),
+         <strong>Empirical Invariant:</strong> In measured breakdowns, <code>Q_Linear</code> latency is consistently <strong>~3.5× to 4× larger</strong> than <code>K_Linear</code> and <code>V_Linear</code> (which take nearly identical time to each other), directly mirroring their physical parameter volume under GQA!"""),
 
-        ("📈 Invariant 2: Quadratic O(N²) Attention Explosion Without KV Cache",
+        ("📈 Invariant 2: Quadratic O(N²) Attention Scaling Without KV Cache",
          """Because past keys and values are not cached in memory, each layer recalculates the entire causal attention score matrix <code>Q * K^T</code>, triangular mask, softmax, and <code>P * V</code> across the full sequence history from token 0 to token N.
          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
-             <li><strong>Step #0 (Prefill):</strong> Attn_Compute takes <strong>0.68 ms</strong> (1.0% of step)</li>
-             <li><strong>Step #1000:</strong> Attn_Compute escalates to <strong>101.58 ms</strong> (67.7% of step)</li>
-             <li><strong>Step #2047:</strong> Attn_Compute explodes to <strong>376.68 ms</strong> (<strong>79.6% of entire decode time!</strong>)</li>
+             <li><strong>Prefill Step:</strong> Attention compute accounts for only a minor fraction of initial step latency.</li>
+             <li><strong>Long-Context Steps:</strong> Attention compute grows quadratically, escalating to dominate the vast majority of total step execution time.</li>
          </ul>
-         This <strong>550× explosion</strong> is the mathematical proof of why KV caching is mandatory for LLMs."""),
+         This steep exponential explosion is the mathematical and empirical proof of why KV caching is mandatory for LLM inference engines."""),
 
-        ("⚖️ Invariant 3: SwiGLU FFN Asymmetry (Why Gate+Up Takes ~2× to ~2.5× Longer Than Down)",
-         """LLaMA-3.2 employs the <a href="https://arxiv.org/abs/2002.05202" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700;">SwiGLU Feed-Forward Network (Shazeer, 2020)</a> with hidden dimension 2048 and intermediate dimension 8192:
+        ("⚖️ Invariant 3: SwiGLU FFN Asymmetry (Gate+Up vs. Down)",
+         """LLaMA-3.2 employs the <a href="https://arxiv.org/abs/2002.05202" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:700;">SwiGLU Feed-Forward Network (Shazeer, 2020)</a> with intermediate dimension 4× the hidden dimension:
          <div style="margin:0.5rem 0;padding:0.6rem;background:rgba(15,23,42,0.8);border-left:3px solid #38bdf8;font-family:monospace;font-size:0.85rem;">
              FFN(x) = (SiLU(x * W_gate) ⊙ (x * W_up)) * W_down
          </div>
          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
-             <li><strong>Gate + Up Projections (2× Weights & FLOPs):</strong> Computes two separate matrix multiplications (<code>W_gate</code>: 2048 ➔ 8192 and <code>W_up</code>: 2048 ➔ 8192), streaming <strong>67.11 MB</strong> of weights per layer (1.07 GB across 16 layers).</li>
-             <li><strong>Down Projection (1× Weights & FLOPs):</strong> Computes only a single matrix multiplication (<code>W_down</code>: 8192 ➔ 2048), streaming <strong>33.55 MB</strong> of weights per layer (537 MB total).</li>
-             <li><strong>Why Early Steps Stretch to ~2.5× (Almost 3×):</strong> In un-fused PyTorch execution, <code>gate_proj</code> and <code>up_proj</code> dispatch as <em>two separate GPU GEMM kernel launches</em>, doubling kernel launch overheads and writing two wide 8192-dim intermediate activation tensors to VRAM before <code>Down</code> compresses them back to 2048.</li>
+             <li><strong>Gate + Up Projections (2× Weights & FLOPs):</strong> Evaluates two separate matrix multiplications (<code>gate_proj</code> and <code>up_proj</code>), streaming twice the parameter volume.</li>
+             <li><strong>Down Projection (1× Weights & FLOPs):</strong> Evaluates a single matrix multiplication compressing intermediate activations back to the hidden dimension.</li>
+             <li><strong>Launch Overhead in Unfused Execution:</strong> Separate kernel dispatches for <code>gate_proj</code> and <code>up_proj</code> incur two launches and write wide intermediate tensors to VRAM, causing early ratios to stretch above 2×.</li>
          </ul>
-         <strong>Empirical Proof in Our Data:</strong>
-         At Step #0, <code>Gate+Up</code> takes <strong>6.25 ms</strong> vs. <code>Down</code> at <strong>2.51 ms</strong> (a <strong>2.49× ratio</strong>, nearly 3×). As sequence length expands into compute saturation (Steps 1000–2047), launch overheads amortize and the ratio asymptotically stabilizes at <strong>~1.93× to 2.0×</strong> (Step 2047: <strong>34.47 ms</strong> vs. <strong>17.88 ms</strong>), perfectly validating the theoretical 2:1 parameter architecture!"""),
+         <strong>Empirical Invariant:</strong>
+         Across all checkpoints, <code>Gate+Up</code> consistently takes approximately <strong>2× to 2.5× longer</strong> than <code>Down</code>, asymptotically stabilizing near the theoretical 2:1 parameter ratio as context expands into compute saturation."""),
 
         ("🎯 Invariant 4: Constant O(1) Flatness of LM_Head",
-         """While attention explodes quadratically and linear projections grow linearly with sequence length, the vocabulary projection (<code>LM_Head</code>) remains strictly constant:
+         """While attention expands quadratically and linear projections grow with context length, the vocabulary projection (<code>LM_Head</code>) remains strictly flat:
          <div style="margin:0.5rem 0;padding:0.6rem;background:rgba(15,23,42,0.8);border-left:3px solid #c084fc;font-family:monospace;font-size:0.9rem;">
              logits = self.lm_head(h[:, [-1], :])  # Only projects the final token slice!
          </div>
-         Because it multiplies only the single final token hidden state <code>[1, 1, 2048] × [2048, 128256]</code>, it streams the exact same 525 MB vocabulary weights at every step. Its measured latency stays <strong>strictly identical at ~2.08 ms</strong> from Step 0 to Step 2047!"""),
+         Because it multiplies only the single final token hidden state, it streams the exact same output projection weight matrix at every step. Its measured latency remains virtually constant across the entire sequence."""),
 
-        ("🔄 Invariant 5: Duty Cycle Inversion (22% ➔ 98.6%)",
-         """At Step 0–250, GPU execution finishes in ~15–22 ms, but CPU dispatch overhead takes ~39–53 ms, keeping the GPU idle ~75% of the time (<strong>Duty Cycle ~22–36%</strong>).<br><br>
-         As sequence length grows, the quadratic attention computation swells GPU execution time to ~467 ms. Because GPU execution duration far outstrips the host dispatch latency, CPU overhead is completely hidden in the background, driving GPU Duty Cycle to <strong>98.6%</strong>."""),
+        ("🔄 Invariant 5: Duty Cycle Inversion (Host-Bound ➔ Attention-Saturated)",
+         """At short sequence lengths, GPU execution finishes very quickly while host dispatch overhead remains relatively fixed, causing significant GPU idle time and low duty cycle.<br><br>
+         As sequence length grows, the expanding attention computation dramatically increases GPU execution time. Because kernel execution duration increasingly dwarfs host dispatch latency, CPU overhead is effectively hidden, driving GPU duty cycle toward near-100% saturation."""),
     ]
     cards_html = "".join(f"""
         <div class="kpi-card" style="padding:1.25rem;">
@@ -1614,7 +1604,7 @@ def generate_html_dashboard(
         <!-- SECTION A: EXECUTIVE SUMMARY -->
         <div class="section" id="section-summary">
             <div class="section-title">📋 Section A: Executive Summary & Performance High-Water Marks</div>
-            <div class="section-desc">Profile run of LLaMA-3.2-1B generating {total_tokens} tokens on an NVIDIA L4 GPU (24GB GDDR6). Deep kernel-level traces captured at {sampled_count} sampled checkpoints (Step #0, 250, 500, ..., 2047).</div>
+            <div class="section-desc">Profile run of LLaMA-3.2-1B generating {total_tokens} tokens across {sampled_count} sampled checkpoints.</div>
 
             <div class="kpi-grid" style="margin-bottom:1.5rem;">
                 <div class="kpi-card" style="border-top: 3px solid #eab308;">
@@ -1635,7 +1625,7 @@ def generate_html_dashboard(
                 <div class="kpi-card" style="border-top: 3px solid #38bdf8;">
                     <div class="kpi-label" style="color:#38bdf8;">Avg Decode Latency</div>
                     <div class="kpi-value" style="color:#38bdf8;">{avg_decode_latency:.2f} <span style="font-size:1rem;color:#94a3b8;">ms</span></div>
-                    <div class="kpi-sub">Grows 68ms ➔ 473ms (Step 1–2047)</div>
+                    <div class="kpi-sub">Grows with context length (without KV cache)</div>
                 </div>
                 <div class="kpi-card" style="border-top: 3px solid #10b981;">
                     <div class="kpi-label" style="color: #34d399;">Active GPU Kernel Time</div>
@@ -1650,17 +1640,17 @@ def generate_html_dashboard(
                 <div class="kpi-card" style="border-top: 3px solid #facc15;">
                     <div class="kpi-label" style="color: #facc15;">Active GPU Duty Cycle</div>
                     <div class="kpi-value" style="color: #facc15;">{avg_duty_cycle:.1f}%</div>
-                    <div class="kpi-sub">GPU execution activity (22% ➔ 98.6%)</div>
+                    <div class="kpi-sub">Ratio of active kernel time to step latency</div>
                 </div>
             </div>
 
             <div style="background:rgba(15,23,42,0.8);border:1px solid #1e293b;border-radius:0.6rem;padding:1rem 1.25rem;">
                 <div style="font-weight:700;font-size:0.95rem;color:#fff;margin-bottom:0.4rem;">🎯 Key Profiling Insights & Hardware Observations:</div>
                 <ul style="margin-left:1.25rem;color:#cbd5e1;font-size:0.88rem;line-height:1.7;">
-                    <li><strong>O(N²) Quadratic Attention Scaling:</strong> In the absence of a KV cache, token decode time escalates <strong>6.9× from 68.07 ms (Step 0) to 473.41 ms (Step 2047)</strong>, with <code>Attn_Compute</code> ballooning from 0.68 ms to 376.68 ms (80% of entire step latency).</li>
-                    <li><strong>Host Overhead Amortization:</strong> At short context lengths, GPU kernels execute so quickly that the GPU sits starved for work waiting on CPU dispatch (duty cycle 22.1%). At 2048 tokens, the massive attention kernel keeps the GPU 98.6% busy, completely hiding host launch latency.</li>
-                    <li><strong>Grouped-Query Attention Asymmetry:</strong> Measured kernel execution times reflect the exact architectural 4:1:1 parameter ratio between Query (0.90 ms) and Key/Value projections (0.26 ms each).</li>
-                    <li><strong>SwiGLU FFN Asymmetry:</strong> <code>Gate+Up</code> takes <strong>~2× to 2.5× longer than Down</strong> (6.25 ms vs 2.51 ms at Step 0; 34.47 ms vs 17.88 ms at Step 2047) because it evaluates two independent GEMM matrix multiplications streaming 2× the weight volume (67.1 MB vs 33.5 MB per layer).</li>
+                    <li><strong>O(N²) Quadratic Attention Scaling:</strong> Without a KV cache, token decode latency escalates steeply with sequence length, as <code>Attn_Compute</code> recomputes the entire context history at each step, growing to dominate overall step latency at long context lengths.</li>
+                    <li><strong>Host Overhead Amortization:</strong> At short context lengths, individual GPU kernels complete in microseconds, leaving the GPU waiting on host CPU dispatch. At longer sequence lengths, expanding attention execution duration dwarfs host dispatch latency, keeping the GPU continuously saturated.</li>
+                    <li><strong>Grouped-Query Attention Asymmetry:</strong> Measured projection times reflect the architectural 4:1:1 ratio between Query and Key/Value projections, with Query projection taking roughly 4× longer due to having 4× more attention heads and weights.</li>
+                    <li><strong>SwiGLU FFN Asymmetry:</strong> <code>Gate+Up</code> consistently takes approximately 2× to 2.5× longer than <code>Down</code> because it evaluates two independent GEMM matrix projections (streaming roughly twice the weight volume and dispatching separate kernels) compared to the single down-projection.</li>
                 </ul>
             </div>
         </div>
@@ -1682,7 +1672,7 @@ def generate_html_dashboard(
         <!-- SECTION D: ACTIVE GPU DUTY CYCLE PROGRESSION GRAPH -->
         <div class="section" id="section-duty-cycle">
             <div class="section-title">📈 Section D: Active GPU Duty Cycle Progression</div>
-            <div class="section-desc">Interactive chart tracing active GPU duty cycle scaling from 22.1% at Step 0 to 98.4% at Step 2047. Early steps are dominated by host CPU dispatch dead time, whereas late steps are fully saturated by quadratic attention recomputation.</div>
+            <div class="section-desc">Interactive chart tracing active GPU duty cycle progression across sampled steps. Early steps are dominated by host CPU dispatch dead time, whereas late steps are fully saturated by quadratic attention recomputation.</div>
             {duty_cycle_chart_svg}
         </div>
 
@@ -1696,7 +1686,7 @@ def generate_html_dashboard(
         <!-- SECTION F: EXPECTED RESULTS & SYSTEMS INVARIANTS -->
         <div class="section" id="section-expected-results">
             <div class="section-title">🔬 Section F: Expected Results & Systems Invariants</div>
-            <div class="section-desc">Hardcoded empirical validation checklist verifying theoretical LLM systems invariants against our measured hardware trace data.</div>
+            <div class="section-desc">Empirical validation checklist verifying theoretical LLM systems invariants against measured execution data.</div>
             {expected_results_html}
         </div>
 
