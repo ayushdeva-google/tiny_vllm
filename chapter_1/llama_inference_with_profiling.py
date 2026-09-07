@@ -391,7 +391,9 @@ def main():
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
     parser.add_argument("--profile", action="store_true", default=True, help="Enable fine-grained sampled profiling")
     parser.add_argument("--no_profile", dest="profile", action="store_false", help="Disable profiling")
-    parser.add_argument("--profile_output_dir", type=str, default="profile_results", help="Directory for profile outputs")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_results_dir = os.path.join(script_dir, "profile_results")
+    parser.add_argument("--profile_output_dir", type=str, default=default_results_dir, help="Directory for profile outputs")
     parser.add_argument("--warmup", action="store_true", default=True, help="Run 1-step warmup before profiling")
     parser.add_argument("--ignore_eos", action="store_true", default=False, help="Ignore EOS/EOT tokens to guarantee generating up to max_new_tokens for benchmarking")
     args = parser.parse_args()
@@ -449,9 +451,11 @@ def main():
         json_file = os.path.join(args.profile_output_dir, "token_metrics.json")
         save_json_metrics(token_records, prompt=args.prompt, output_file=json_file, timeline_records=timeline_records)
 
+        rel_viz = os.path.relpath(os.path.join(script_dir, "profile_visualizer.py"), os.getcwd())
+        rel_json = os.path.relpath(json_file, os.getcwd())
         print(f"\n[✓] Profiling complete. Metrics saved to: {os.path.abspath(json_file)}")
         print(f"[*] To generate the HTML dashboard, run:")
-        print(f"    .venv/bin/python profile_visualizer.py --json {json_file}")
+        print(f"    python {rel_viz} --json {rel_json}")
 
 
 if __name__ == "__main__":

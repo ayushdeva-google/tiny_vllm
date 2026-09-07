@@ -1763,14 +1763,26 @@ def save_json_metrics(
 
 if __name__ == "__main__":
     import argparse
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_json = os.path.join(script_dir, "profile_results", "token_metrics.json")
+    default_output = os.path.join(script_dir, "profile_results", "profile_dashboard.html")
+
     parser = argparse.ArgumentParser(description="Generate or regenerate HTML dashboard from token metrics JSON.")
-    parser.add_argument("--json", type=str, default="profile_results/token_metrics.json", help="Path to token_metrics.json")
-    parser.add_argument("--output", type=str, default="profile_results/profile_dashboard.html", help="Path to output HTML file")
+    parser.add_argument("--json", type=str, default=default_json, help="Path to token_metrics.json")
+    parser.add_argument("--output", type=str, default=default_output, help="Path to output HTML file")
     parser.add_argument("--terminal", action="store_true", default=False, help="Also print terminal summary tables")
     cli_args = parser.parse_args()
 
-    if os.path.exists(cli_args.json):
-        with open(cli_args.json, "r", encoding="utf-8") as f:
+    json_path = cli_args.json
+    if not os.path.exists(json_path):
+        # Fallback check relative to script directory
+        candidate = os.path.join(script_dir, "profile_results", "token_metrics.json")
+        if os.path.exists(candidate):
+            json_path = candidate
+
+    if os.path.exists(json_path):
+        with open(json_path, "r", encoding="utf-8") as f:
             saved_data = json.load(f)
         tokens = saved_data.get("tokens", [])
         saved_prompt = saved_data.get("prompt", "")
@@ -1783,4 +1795,5 @@ if __name__ == "__main__":
         print(f"[✓] Dashboard successfully generated at: {cli_args.output}")
     else:
         print(f"[!] Metrics file not found at: {cli_args.json}. Run llama_inference_with_profiling.py first to generate metrics.")
+
 

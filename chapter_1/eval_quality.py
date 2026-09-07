@@ -46,6 +46,16 @@ PARITY_PROMPTS = [
 ]
 
 
+def resolve_data_path(rel_path: str) -> str:
+    """Resolves data path whether running from repo root or chapter_1/."""
+    if os.path.exists(rel_path):
+        return rel_path
+    parent_candidate = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", rel_path)
+    if os.path.exists(parent_candidate):
+        return os.path.abspath(parent_candidate)
+    return rel_path
+
+
 # -----------------------------------------------------------------------------
 # Pillar 1: WikiText-2 Perplexity (PPL)
 # -----------------------------------------------------------------------------
@@ -63,6 +73,7 @@ def evaluate_wikitext_ppl(
     Returns: (perplexity, avg_cross_entropy_loss, elapsed_time)
     """
     start_time = time.perf_counter()
+    data_path = resolve_data_path(data_path)
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"WikiText test file not found at {data_path}. Please download it first.")
 
@@ -219,6 +230,7 @@ def evaluate_arc_easy(
     Returns: (accuracy, num_correct, total_evaluated, elapsed_time)
     """
     start_time = time.perf_counter()
+    data_path = resolve_data_path(data_path)
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"ARC-Easy test file not found at {data_path}.")
 
