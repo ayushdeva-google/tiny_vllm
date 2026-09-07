@@ -93,6 +93,13 @@ Run [eval_quality.py](file:///home/ayushdeva_google_com/tiny_vllm/eval_quality.p
 python eval_quality.py
 ```
 
+### Full Automated Profiling Suite Orchestrator
+Run [run_profiling_suite.py](file:///home/ayushdeva_google_com/tiny_vllm/run_profiling_suite.py) to automate PyTorch profiling, Nsight Systems kernel traces, and report archiving:
+
+```bash
+python run_profiling_suite.py
+```
+
 ---
 
 ## Deep-Dive Documentation
