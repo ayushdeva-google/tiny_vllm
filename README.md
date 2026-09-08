@@ -121,8 +121,10 @@ python chapter_1/eval_quality.py
 ## Deep-Dive Documentation
 
 For detailed analysis of GPU execution mechanics and memory systems, see the guides in `docs/`:
+- [Unoptimized Attention Breakdown & Memory Physics](file:///home/ayushdeva_google_com/tiny_vllm/docs/unoptimized_attention_breakdown.md)
 - [GPU Memory Wait & Scheduling FAQ](file:///home/ayushdeva_google_com/tiny_vllm/docs/GPU_MEMORY_WAIT_AND_SCHEDULING_FAQ.md)
 - [Inference Architecture & Hardware Interplay](file:///home/ayushdeva_google_com/tiny_vllm/docs/INFERENCE_ARCHITECTURE_AND_HARDWARE_INTERPLAY.md)
 - [Profiling Experiments & Systems Learnings](file:///home/ayushdeva_google_com/tiny_vllm/docs/PROFILING_EXPERIMENTS_AND_SYSTEMS_LEARNINGS.md)
+
 
 
