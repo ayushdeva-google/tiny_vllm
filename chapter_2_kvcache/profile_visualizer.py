@@ -1958,186 +1958,157 @@ def generate_html_dashboard(
 
             <div class="kpi-grid" style="margin-bottom:1.5rem;">
                 <!-- KPI 1 -->
-                <div class="kpi-card" style="border-top: 3px solid #eab308;">
-                    <div class="kpi-title" style="color:#eab308;">Total Time to Generate Tokens</div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Total Time to Generate Tokens</div>
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
-                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_wall_sec:.1f}s</div>
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">{b_wall_sec:.1f}s</div>
                         </div>
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #eab308; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
-                            <div style="font-size: 1.25rem; font-weight: 700; color: #eab308;">{total_wall_clock_sec:.1f}s</div>
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #38bdf8;">{total_wall_clock_sec:.1f}s</div>
                         </div>
                     </div>
-                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 {wall_speedup:.1f}× Faster</span></div>
-                    <div class="kpi-sub" style="text-align: center;">End-to-End Wall-Clock Latency</div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 {wall_speedup:.1f}× Faster</span></div>
                 </div>
 
                 <!-- KPI 2 -->
-                <div class="kpi-card" style="border-top: 3px solid #10b981;">
-                    <div class="kpi-title" style="color:#34d399;">Active GPU Kernel Time</div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Active GPU Kernel Time</div>
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
-                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_gpu_sec:.1f}s</div>
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">{b_gpu_sec:.1f}s</div>
                         </div>
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #34d399; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
-                            <div style="font-size: 1.25rem; font-weight: 700; color: #34d399;">{total_gpu_active_sec:.1f}s</div>
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #34d399;">{total_gpu_active_sec:.1f}s</div>
                         </div>
                     </div>
-                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 {gpu_speedup:.1f}× Compute Red.</span></div>
-                    <div class="kpi-sub" style="text-align: center;">{total_gpu_pct:.1f}% of total (~{avg_gpu_active_ms:.2f} ms/tok active)</div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 {gpu_speedup:.1f}× Compute Red.</span></div>
                 </div>
 
                 <!-- KPI 3 -->
-                <div class="kpi-card" style="border-top: 3px solid #3b82f6;">
-                    <div class="kpi-title" style="color:#60a5fa;">Host CPU Launch Gaps (GPU Idle)</div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Host CPU Launch Gaps (Idle)</div>
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
-                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_cpu_sec:.1f}s</div>
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">{b_cpu_sec:.1f}s</div>
                         </div>
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #60a5fa; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
-                            <div style="font-size: 1.25rem; font-weight: 700; color: #60a5fa;">{total_host_cpu_gaps_sec:.1f}s</div>
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #fbbf24;">{total_host_cpu_gaps_sec:.1f}s</div>
                         </div>
                     </div>
-                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-warn">⚠️ Host Bottleneck Unmasked</span></div>
-                    <div class="kpi-sub" style="text-align: center;">{total_cpu_pct:.1f}% of total (~{native_cpu_idle_ms:.2f} ms/tok gap)</div>
+                    <div style="text-align: center;"><span class="delta-badge-warn">⚠️ Host Bottleneck Unmasked</span></div>
                 </div>
 
                 <!-- KPI 4 -->
-                <div class="kpi-card" style="border-top: 3px solid #f59e0b;">
-                    <div class="kpi-title" style="color:#fbbf24;">GPU Memory Streaming (Analytical)</div>
+                <div class="kpi-card">
+                    <div class="kpi-title">GPU Memory Streaming</div>
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
-                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_mem_sec:.1f}s</div>
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">{b_mem_sec:.1f}s</div>
                         </div>
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #fbbf24; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
-                            <div style="font-size: 1.25rem; font-weight: 700; color: #fbbf24;">{total_mem_sec:.1f}s</div>
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new">{total_mem_sec:.1f}s</div>
                         </div>
                     </div>
-                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-warn">📦 {mem_transfer_pct:.1f}% Mem-Bound</span></div>
-                    <div class="kpi-sub" style="text-align: center;">Streaming 2.46 GB weights @ ~225 GB/s</div>
+                    <div style="text-align: center;"><span class="delta-badge-warn">📦 {mem_transfer_pct:.1f}% Mem-Bound</span></div>
                 </div>
 
                 <!-- KPI 5 -->
-                <div class="kpi-card" style="border-top: 3px solid #8b5cf6;">
-                    <div class="kpi-title" style="color:#a78bfa;">GPU Compute Active (Analytical)</div>
+                <div class="kpi-card">
+                    <div class="kpi-title">GPU Compute Active</div>
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
-                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_comp_sec:.1f}s</div>
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">{b_comp_sec:.1f}s</div>
                         </div>
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #a78bfa; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
-                            <div style="font-size: 1.25rem; font-weight: 700; color: #a78bfa;">{total_comp_sec:.1f}s</div>
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #a78bfa;">{total_comp_sec:.1f}s</div>
                         </div>
                     </div>
-                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 {comp_reduction:.0f}× Math Red.</span></div>
-                    <div class="kpi-sub" style="text-align: center;">{compute_pct:.1f}% of GPU time (~{compute_ms:.2f} ms/tok active)</div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 {comp_reduction:.0f}× Math Red.</span></div>
                 </div>
 
                 <!-- KPI 6 -->
-                <div class="kpi-card" style="border-top: 3px solid #06b6d4;">
-                    <div class="kpi-title" style="color:#22d3ee;">Throughput</div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Throughput</div>
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
-                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_tps:.1f} <span style="font-size:0.75rem;">tok/s</span></div>
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">{b_tps:.1f}</div>
                         </div>
                         <div class="kpi-compare-col">
-                            <div style="font-size: 0.65rem; color: #22d3ee; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
-                            <div style="font-size: 1.25rem; font-weight: 700; color: #22d3ee;">{tokens_per_sec:.1f} <span style="font-size:0.75rem;">tok/s</span></div>
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #22d3ee;">{tokens_per_sec:.1f}</div>
                         </div>
                     </div>
-                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 +{tps_gain:.0f}% Throughput</span></div>
-                    <div class="kpi-sub" style="text-align: center;">Decode: {avg_decode_latency:.1f} ms (With KV) vs {b_avg_decode:.1f} ms (Without KV)</div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 +{tps_gain:.0f}% Throughput</span></div>
                 </div>
             </div>
 
             <!-- COMPARATIVE TWO-TIER HARDWARE TIME ALLOCATION BARS -->
-            <div style="background:rgba(15,23,42,0.6);border:1px solid var(--card-border);border-radius:0.75rem;padding:1.25rem;margin-bottom:1.5rem;">
-                <div style="font-size:0.95rem;font-weight:700;color:#f8fafc;margin-bottom:0.75rem;display:flex;justify-content:space-between;align-items:center;">
-                    <span>📊 Two-Tier Hardware Time Allocation Breakdown (Head-to-Head Comparison)</span>
-                    <span style="font-size:0.8rem;color:#94a3b8;font-weight:400;">Total Sequence: {total_tokens} tokens</span>
+            <div style="background:#0f172a;border:1px solid var(--card-border);border-radius:0.75rem;padding:1.25rem;margin-bottom:1.5rem;">
+                <div style="font-size:0.95rem;font-weight:700;color:#f8fafc;margin-bottom:1rem;text-align:center;">
+                    📊 Two-Tier Hardware Time Allocation Breakdown (Head-to-Head Comparison)
+                </div>
+                
+                <div class="chart-legend">
+                    <div class="legend-item"><div class="legend-box old-bar"></div> Without KV Cache</div>
+                    <div class="legend-item"><div class="legend-box new-bar"></div> With KV Cache</div>
                 </div>
 
-                <!-- Tier 1 Comparison -->
-                <div style="margin-bottom:1.5rem;">
-                    <div style="font-size:0.85rem;font-weight:700;color:#e2e8f0;margin-bottom:0.4rem;">
-                        Tier 1: Macro Wall-Clock Time Allocation (End-to-End Latency)
+                <div class="chart-container">
+                    <!-- Group 1 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: {b_wall_sec / b_wall_sec * 100:.1f}%;" title="{b_wall_sec:.1f}s"><span>{b_wall_sec:.1f}s</span></div>
+                            <div class="bar new-bar" style="height: {total_wall_clock_sec / b_wall_sec * 100:.1f}%;" title="{total_wall_clock_sec:.1f}s"><span>{total_wall_clock_sec:.1f}s</span></div>
+                        </div>
+                        <div class="group-label">Total<br>Wall Clock</div>
                     </div>
-                    <!-- Without KV Bar -->
-                    <div style="margin-bottom:0.45rem;">
-                        <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>Without KV Cache (Naive Baseline &bull; {b_wall_sec:.1f} s total):</span>
-                            <span>Active GPU: <strong style="color:#f87171;">{b_gpu_pct:.1f}% ({b_gpu_sec:.1f}s)</strong> | Host Idle: <strong style="color:#60a5fa;">{b_cpu_pct:.1f}% ({b_cpu_sec:.1f}s)</strong></span>
+                    
+                    <!-- Group 2 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: {b_gpu_sec / b_wall_sec * 100:.1f}%;" title="{b_gpu_sec:.1f}s"><span>{b_gpu_sec:.1f}s</span></div>
+                            <div class="bar new-bar" style="height: {total_gpu_active_sec / b_wall_sec * 100:.1f}%;" title="{total_gpu_active_sec:.1f}s"><span>{total_gpu_active_sec:.1f}s</span></div>
                         </div>
-                        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
-                            <div style="width:{b_gpu_pct:.1f}%;background:linear-gradient(90deg,#b91c1c,#ef4444);display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                GPU Active {b_gpu_sec:.1f}s ({b_gpu_pct:.1f}%)
-                            </div>
-                            <div style="width:{b_cpu_pct:.1f}%;background:#2563eb;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                Host Gaps {b_cpu_sec:.1f}s ({b_cpu_pct:.1f}%)
-                            </div>
-                        </div>
+                        <div class="group-label">Active GPU<br>Execution</div>
                     </div>
-                    <!-- With KV Bar -->
-                    <div>
-                        <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>With KV Cache (KV Cache &bull; {total_wall_clock_sec:.1f} s total &bull; <strong style="color:#34d399;">{wall_speedup:.1f}× Faster</strong>):</span>
-                            <span>Active GPU: <strong style="color:#34d399;">{total_gpu_pct:.1f}% ({total_gpu_active_sec:.1f}s)</strong> | Host Idle: <strong style="color:#60a5fa;">{total_cpu_pct:.1f}% ({total_host_cpu_gaps_sec:.1f}s)</strong></span>
-                        </div>
-                        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
-                            <div style="width:{total_gpu_pct:.1f}%;background:linear-gradient(90deg,#059669,#10b981);display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                GPU Active {total_gpu_active_sec:.1f}s ({total_gpu_pct:.1f}%)
-                            </div>
-                            <div style="width:{total_cpu_pct:.1f}%;background:linear-gradient(90deg,#2563eb,#3b82f6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                Host CPU Launch Gaps {total_host_cpu_gaps_sec:.1f}s ({total_cpu_pct:.1f}%)
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Tier 2 Comparison -->
-                <div>
-                    <div style="font-size:0.85rem;font-weight:700;color:#e2e8f0;margin-bottom:0.4rem;">
-                        Tier 2: Inside Active GPU Silicon Execution (Analytical Roofline Inversion)
+                    <!-- Group 3 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: {b_cpu_sec / b_wall_sec * 100:.1f}%;" title="{b_cpu_sec:.1f}s"><span>{b_cpu_sec:.1f}s</span></div>
+                            <div class="bar new-bar" style="height: {total_host_cpu_gaps_sec / b_wall_sec * 100:.1f}%;" title="{total_host_cpu_gaps_sec:.1f}s"><span>{total_host_cpu_gaps_sec:.1f}s</span></div>
+                        </div>
+                        <div class="group-label">Host CPU<br>Idle Gaps</div>
                     </div>
-                    <!-- Without KV Roofline -->
-                    <div style="margin-bottom:0.45rem;">
-                        <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>Without KV Cache Active GPU ({b_gpu_sec:.1f} s kernel time &bull; Compute-Bound):</span>
-                            <span>Memory Transfer: <strong style="color:#fbbf24;">{b_mem_pct:.1f}% ({b_mem_sec:.1f}s)</strong> | Tensor Compute: <strong style="color:#f87171;">{b_comp_pct:.1f}% ({b_comp_sec:.1f}s)</strong></span>
+
+                    <!-- Group 4 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: {b_mem_sec / b_wall_sec * 100:.1f}%;" title="{b_mem_sec:.1f}s"><span>{b_mem_sec:.1f}s</span></div>
+                            <div class="bar new-bar" style="height: {total_mem_sec / b_wall_sec * 100:.1f}%;" title="{total_mem_sec:.1f}s"><span>{total_mem_sec:.1f}s</span></div>
                         </div>
-                        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
-                            <div style="width:{b_mem_pct:.1f}%;background:#d97706;display:flex;align-items:center;justify-content:center;color:#000;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                Mem {b_mem_sec:.1f}s
-                            </div>
-                            <div style="width:{b_comp_pct:.1f}%;background:linear-gradient(90deg,#dc2626,#ef4444);display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                Active Tensor/ALU Compute {b_comp_sec:.1f}s ({b_comp_pct:.1f}%)
-                            </div>
-                        </div>
+                        <div class="group-label">GPU Memory<br>Streaming</div>
                     </div>
-                    <!-- With KV Roofline -->
-                    <div>
-                        <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>With KV Cache Active GPU ({total_gpu_active_sec:.1f} s kernel time &bull; Memory-Bound Inversion):</span>
-                            <span>Memory Transfer: <strong style="color:#fbbf24;">{mem_transfer_pct:.1f}% ({total_mem_sec:.1f}s)</strong> | Tensor Compute: <strong style="color:#a78bfa;">{compute_pct:.1f}% ({total_comp_sec:.1f}s)</strong></span>
+
+                    <!-- Group 5 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: {b_comp_sec / b_wall_sec * 100:.1f}%;" title="{b_comp_sec:.1f}s"><span>{b_comp_sec:.1f}s</span></div>
+                            <div class="bar new-bar" style="height: {total_comp_sec / b_wall_sec * 100:.1f}%;" title="{total_comp_sec:.1f}s"><span>{total_comp_sec:.1f}s</span></div>
                         </div>
-                        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
-                            <div style="width:{mem_transfer_pct:.1f}%;background:linear-gradient(90deg,#d97706,#f59e0b);display:flex;align-items:center;justify-content:center;color:#000;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                VRAM Memory Transfer {total_mem_sec:.1f}s ({mem_transfer_pct:.1f}%)
-                            </div>
-                            <div style="width:{compute_pct:.1f}%;background:#7c3aed;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;padding:0 8px;white-space:nowrap;">
-                                Compute {total_comp_sec:.1f}s ({compute_pct:.1f}%)
-                            </div>
-                        </div>
+                        <div class="group-label">GPU Tensor<br>Compute</div>
                     </div>
                 </div>
             </div>
