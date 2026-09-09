@@ -37,6 +37,19 @@ To ensure every learning session and experiment is isolated and reproducible, th
   - [eval_quality.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_1/eval_quality.py): Quality and accuracy validation suite (WikiText-2, greedy parity, ARC-Easy).
   - [profile_results/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_1/profile_results): Saved profiling session data (`token_metrics.json`), PyTorch Chrome traces, and the interactive dashboard (`profile_dashboard.html`).
 
+### [Chapter 2: Key-Value (KV) Cache](file:///home/ayushdeva_google_com/tiny_vllm/chapter_2_kvcache)
+
+**Focus**: Implementing production-grade Key-Value caching from first principles and eliminating quadratic decode recomputation.
+- **Key Concepts Explored**:
+  - Pre-allocated static tensor buffer (`KVCache`) to eliminate GPU reallocations and memory fragmentation.
+  - Grouped-Query Attention (GQA) cache footprint: caching 8 unrepeated KV heads instead of 32 query heads to save 75% VRAM and memory bandwidth.
+  - Prefill vs. Decode execution split ($O(1)$ linear projections during decode, bypassing causal masking).
+  - Shift in arithmetic intensity: from compute-bound quadratic scaling to constant-time memory-bandwidth-bound streaming.
+- **Directory Contents** (`chapter_2_kvcache/`):
+  - [llama_inference_with_profiling.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_2_kvcache/llama_inference_with_profiling.py): Complete, standalone LLaMA-3.2-1B inference engine with static `KVCache` and fine-grained sampled profiling.
+  - [profile_visualizer.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_2_kvcache/profile_visualizer.py): Standalone HTML dashboard generator and Gantt timeline analyzer.
+  - [profile_results/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_2_kvcache/profile_results): Generated profiling sessions, Chrome traces, and interactive HTML dashboard.
+
 ---
 
 ## Quickstart & Setup
