@@ -1924,6 +1924,98 @@ def generate_html_dashboard(
             text-transform: uppercase;
             font-weight: 700;
         }}
+
+        /* === NEW KPI DASHBOARD CSS === */
+        .kpi-card {{
+            background: #0f172a !important;
+            border: 1px solid #1e293b !important;
+            border-radius: 0.5rem !important;
+            padding: 1.25rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+        }}
+        .kpi-title {{
+            color: #f8fafc;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-align: center;
+        }}
+        .kpi-compare-box {{
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0.5rem 0;
+            gap: 1rem;
+        }}
+        .kpi-compare-col {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }}
+        .kpi-label-old {{ color: #64748b; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }}
+        .kpi-val-old {{ color: #94a3b8; font-size: 1.25rem; font-weight: 700; }}
+        .kpi-label-new {{ color: #38bdf8; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }}
+        .kpi-val-new {{ color: #e0f2fe; font-size: 1.25rem; font-weight: 700; }}
+        
+        /* === NEW BAR CHART CSS === */
+        .chart-container {{
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 220px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 0.5rem;
+            padding: 2rem 1rem 1rem 1rem;
+            margin-bottom: 1.5rem;
+        }}
+        .bar-group {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            height: 100%;
+            width: 100px;
+        }}
+        .bar-pair {{
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-grow: 1;
+            width: 100%;
+        }}
+        .bar {{
+            width: 35px;
+            border-radius: 4px 4px 0 0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #fff;
+            transition: height 0.3s ease;
+        }}
+        .old-bar {{ background: #475569; }}
+        .new-bar {{ background: #38bdf8; }}
+        .group-label {{
+            color: #cbd5e1;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.2;
+        }}
+        .chart-legend {{
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+        }}
+        .legend-item {{ display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; font-size: 0.8rem; }}
+        .legend-box {{ width: 12px; height: 12px; border-radius: 2px; }}
     </style>
 </head>
 <body>
