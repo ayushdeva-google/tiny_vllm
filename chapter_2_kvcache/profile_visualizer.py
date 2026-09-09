@@ -191,7 +191,7 @@ OPERATION_METADATA = {
         "category": "Attention Mechanism",
         "badge": "Attn",
         "desc": "Single-token query vector dot product against cached key and value vectors across 16 layers (Q * K_cache^T / sqrt(d), softmax, P * V_cache). With KV cache, past tokens are read from memory rather than recomputed.",
-        "scaling": "Linear O(t) scaling with context length (233.5× faster than Chapter 1 quadratic recomputation at step 2047)",
+        "scaling": "Linear O(t) scaling with context length (233.5× faster than Without KV Cache quadratic recomputation at step 2047)",
     },
     "RoPE": {
         "name": "Rotary Position Embedding",
@@ -621,7 +621,7 @@ def extract_timeline_from_trace(
 
 
 def load_baseline_metrics(baseline_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Loads Chapter 1 baseline token metrics for comparative dashboard analysis."""
+    """Loads Without KV Cache baseline token metrics for comparative dashboard analysis."""
     candidates = []
     if baseline_path:
         candidates.append(baseline_path)
@@ -645,7 +645,7 @@ def render_terminal_dashboard(
     console: Optional[Console] = None,
     baseline_records: Optional[List[Dict[str, Any]]] = None,
 ):
-    """Renders a comprehensive terminal dashboard comparing Ch 2 (KV Cache) against Ch 1 (Naive)."""
+    """Renders a comprehensive terminal dashboard comparing With KV (KV Cache) against Without KV (Naive)."""
     if console is None:
         console = Console()
 
@@ -726,15 +726,15 @@ def render_terminal_dashboard(
     if prompt:
         header_text.append(f"Prompt: {prompt}\n", style="italic white")
     if has_baseline:
-        header_text.append(f"Comparative Summary: {total_tokens} tokens | Ch 1: {b_tps:.1f} tok/s ({b_avg_decode:.1f} ms) ➔ Ch 2: {throughput:.1f} tok/s ({avg_decode_ms:.1f} ms) [+{tps_gain:.0f}% Throughput / {wall_speedup:.1f}× Faster]\n\n", style="bold green")
-        header_text.append("EXECUTIVE HARDWARE DECOMPOSITION (Ch 1 Naive vs. Ch 2 KV Cache):\n", style="bold underline yellow")
-        header_text.append(f"  • Total Time to Generate Tokens : Ch 1: {b_wall_sec:6.2f} s ➔ Ch 2: {total_wall_clock_sec:6.2f} s [🟢 {wall_speedup:.1f}× Faster / -{((b_wall_sec-total_wall_clock_sec)/b_wall_sec*100):.1f}% Latency]\n", style="bold white")
-        header_text.append(f"  • Total Active GPU Kernel Time  : Ch 1: {b_gpu_sec:6.2f} s ➔ Ch 2: {total_gpu_active_sec:6.2f} s [🟢 {gpu_speedup:.1f}× Compute Reduction / -{((b_gpu_sec-total_gpu_active_sec)/b_gpu_sec*100):.1f}%]\n", style="bold green")
-        header_text.append(f"  • Host CPU Launch Gaps (GPU Idle): Ch 1: {b_cpu_sec:6.2f} s ( 6.3%) ➔ Ch 2: {total_host_cpu_gaps_sec:6.2f} s ({total_cpu_pct:4.1f}%) [⚠️ Host Bottleneck Unmasked]\n\n", style="bold blue")
+        header_text.append(f"Comparative Summary: {total_tokens} tokens | Without KV: {b_tps:.1f} tok/s ({b_avg_decode:.1f} ms) ➔ With KV: {throughput:.1f} tok/s ({avg_decode_ms:.1f} ms) [+{tps_gain:.0f}% Throughput / {wall_speedup:.1f}× Faster]\n\n", style="bold green")
+        header_text.append("EXECUTIVE HARDWARE DECOMPOSITION (Without KV Naive vs. With KV KV Cache):\n", style="bold underline yellow")
+        header_text.append(f"  • Total Time to Generate Tokens : Without KV: {b_wall_sec:6.2f} s ➔ With KV: {total_wall_clock_sec:6.2f} s [🟢 {wall_speedup:.1f}× Faster / -{((b_wall_sec-total_wall_clock_sec)/b_wall_sec*100):.1f}% Latency]\n", style="bold white")
+        header_text.append(f"  • Total Active GPU Kernel Time  : Without KV: {b_gpu_sec:6.2f} s ➔ With KV: {total_gpu_active_sec:6.2f} s [🟢 {gpu_speedup:.1f}× Compute Reduction / -{((b_gpu_sec-total_gpu_active_sec)/b_gpu_sec*100):.1f}%]\n", style="bold green")
+        header_text.append(f"  • Host CPU Launch Gaps (GPU Idle): Without KV: {b_cpu_sec:6.2f} s ( 6.3%) ➔ With KV: {total_host_cpu_gaps_sec:6.2f} s ({total_cpu_pct:4.1f}%) [⚠️ Host Bottleneck Unmasked]\n\n", style="bold blue")
         header_text.append("INSIDE ACTIVE GPU KERNELS (Analytical Roofline Inversion):\n", style="bold underline magenta")
-        header_text.append(f"  • GPU Memory Streaming (Transfer): Ch 1: {b_mem_sec:6.2f} s ( 6.9%) ➔ Ch 2: {total_mem_sec:6.2f} s ({mem_transfer_pct:4.1f}%) [📦 Shift to Memory-Bound]\n", style="bold orange3")
-        header_text.append(f"  • GPU Compute Active (Tensor/ALU): Ch 1: {b_comp_sec:6.2f} s (93.1%) ➔ Ch 2: {total_comp_sec:6.2f} s ({compute_pct:4.1f}%) [🟢 205× Math Reduction]\n\n", style="bold bright_cyan")
-        header_text.append(f"Active GPU Duty Cycle: Ch 1 saturated at ~98.6% (attention recomputation) ➔ Ch 2 idle at {avg_duty_cycle:.1f}% (host dispatch bound)\n", style="bold bright_white")
+        header_text.append(f"  • GPU Memory Streaming (Transfer): Without KV: {b_mem_sec:6.2f} s ( 6.9%) ➔ With KV: {total_mem_sec:6.2f} s ({mem_transfer_pct:4.1f}%) [📦 Shift to Memory-Bound]\n", style="bold orange3")
+        header_text.append(f"  • GPU Compute Active (Tensor/ALU): Without KV: {b_comp_sec:6.2f} s (93.1%) ➔ With KV: {total_comp_sec:6.2f} s ({compute_pct:4.1f}%) [🟢 205× Math Reduction]\n\n", style="bold bright_cyan")
+        header_text.append(f"Active GPU Duty Cycle: Without KV saturated at ~98.6% (attention recomputation) ➔ With KV idle at {avg_duty_cycle:.1f}% (host dispatch bound)\n", style="bold bright_white")
     else:
         header_text.append(f"Sequence Summary: {total_tokens} tokens total | Prefill: {prefill_ms:.2f} ms | Avg Decode: {avg_decode_ms:.2f} ms/token ({throughput:.1f} tok/s)\n\n", style="bold green")
         header_text.append("EXECUTIVE HARDWARE DECOMPOSITION (Total Generation):\n", style="bold underline yellow")
@@ -823,15 +823,15 @@ def render_terminal_dashboard(
     )
     phys_table.add_column("Step", justify="right", style="cyan", width=6)
     if has_baseline:
-        phys_table.add_column("Ch 1 Tot", justify="right", style="dim red", width=9)
-        phys_table.add_column("Ch 2 Tot", justify="right", style="bold white", width=9)
+        phys_table.add_column("Without KV Tot", justify="right", style="dim red", width=9)
+        phys_table.add_column("With KV Tot", justify="right", style="bold white", width=9)
         phys_table.add_column("Speedup", justify="right", style="bold green", width=8)
-        phys_table.add_column("Ch 1 GPU", justify="right", style="dim red", width=9)
-        phys_table.add_column("Ch 2 GPU", justify="right", style="bold green", width=9)
+        phys_table.add_column("Without KV GPU", justify="right", style="dim red", width=9)
+        phys_table.add_column("With KV GPU", justify="right", style="bold green", width=9)
         phys_table.add_column("GPU Red.", justify="right", style="bold bright_green", width=9)
-        phys_table.add_column("Ch 1 CPU", justify="right", style="dim blue", width=9)
-        phys_table.add_column("Ch 2 CPU", justify="right", style="bold blue", width=9)
-        phys_table.add_column("Duty (Ch1➔Ch2)", justify="center", style="bold bright_white", width=14)
+        phys_table.add_column("Without KV CPU", justify="right", style="dim blue", width=9)
+        phys_table.add_column("With KV CPU", justify="right", style="bold blue", width=9)
+        phys_table.add_column("Duty Shift", justify="center", style="bold bright_white", width=14)
     else:
         phys_table.add_column("Total (ms)", justify="right", style="bold white", width=10)
         phys_table.add_column("Active GPU (ms)", justify="right", style="bold green", width=15)
@@ -897,7 +897,7 @@ def _build_forward_table_html(
     # Tab 1: Comparative Delta Table
     delta_headers = [
         "Step", "Emb", "Norm1", "Q_proj", "K_proj", "V_proj", "RoPE",
-        "KV_Store (Ch2)", "Attn_Comp (Delta)", "O_proj", "Norm2",
+        "KV_Store", "Attn_Comp (Delta)", "O_proj", "Norm2",
         "Gate+Up (Delta)", "Down (Delta)", "LMHead", "Total Step Latency", "Speedup"
     ]
     delta_th = "".join(f"<th style='white-space:nowrap;'>{h}</th>" for h in delta_headers)
@@ -947,7 +947,7 @@ def _build_forward_table_html(
         ]
         delta_rows.append(f"<tr>{''.join(tds)}</tr>")
 
-    # Tab 2: Chapter 2 Clean Table
+    # Tab 2: With KV Cache Clean Table
     ch2_headers = ["Step"] + [f"{short}" for op, short, col in forward_ops] + ["Total (ms)"]
     ch2_th = "".join(f"<th style='white-space:nowrap;'>{h}</th>" for h in ch2_headers)
     ch2_rows = []
@@ -972,7 +972,7 @@ def _build_forward_table_html(
         tds.append(f"<td><strong style='color:#fff;'>{tot:.2f}</strong></td>")
         ch2_rows.append(f"<tr>{''.join(tds)}</tr>")
 
-    # Tab 3: Chapter 1 Clean Table
+    # Tab 3: Without KV Cache Clean Table
     ch1_ops = [x for x in forward_ops if x[0] != "KV_Cache_Update"]
     ch1_headers = ["Step"] + [f"{short}" for op, short, col in ch1_ops] + ["Total (ms)"]
     ch1_th = "".join(f"<th style='white-space:nowrap;'>{h}</th>" for h in ch1_headers)
@@ -1000,9 +1000,9 @@ def _build_forward_table_html(
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem; padding:0.6rem 0.9rem; background:rgba(15,23,42,0.6); border:1px solid var(--card-border); border-radius:0.6rem;">
         <div style="display:flex; align-items:center; gap:0.5rem;">
             <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">View Table Mode:</span>
-            <button id="btn-tab-delta" class="tab-btn active" onclick="switchTableTab('tab-delta')">⚡ Comparative Delta (Ch 2 vs Ch 1)</button>
-            <button id="btn-tab-ch2" class="tab-btn" onclick="switchTableTab('tab-ch2')">🟢 Chapter 2: KV Cache</button>
-            <button id="btn-tab-ch1" class="tab-btn" onclick="switchTableTab('tab-ch1')">🔴 Chapter 1: Naive Baseline</button>
+            <button id="btn-tab-delta" class="tab-btn active" onclick="switchTableTab('tab-delta')">⚡ Comparative Delta (With KV vs Without KV)</button>
+            <button id="btn-tab-ch2" class="tab-btn" onclick="switchTableTab('tab-ch2')">🟢 With KV Cache</button>
+            <button id="btn-tab-ch1" class="tab-btn" onclick="switchTableTab('tab-ch1')">🔴 Without KV Cache: Naive Baseline</button>
         </div>
         <div style="font-size:0.78rem; color:#94a3b8;">
             💡 Highlighting linear scaling vs quadratic attention explosion
@@ -1080,15 +1080,15 @@ def _build_physical_metrics_table_html(
         elif step == 250:
             regime = "<span style='color:#60a5fa;font-weight:600;'>Both Host CPU Bound (~19–31% Duty)</span>"
         elif step == 500:
-            regime = "<span style='color:#f59e0b;font-weight:600;'>Ch 1 Saturation (75%) ➔ Ch 2 Host Starved (21%)</span>"
+            regime = "<span style='color:#f59e0b;font-weight:600;'>Without KV Saturation (75%) ➔ With KV Host Starved (21%)</span>"
         elif step == 1000:
-            regime = "<span style='color:#10b981;font-weight:600;'>Ch 1 96% Saturation ➔ Ch 2 12.4× GPU Speedup</span>"
+            regime = "<span style='color:#10b981;font-weight:600;'>Without KV 96% Saturation ➔ With KV 12.4× GPU Speedup</span>"
         elif step == 1500:
-            regime = "<span style='color:#10b981;font-weight:600;'>Ch 1 97% Saturation ➔ Ch 2 23.0× GPU Speedup</span>"
+            regime = "<span style='color:#10b981;font-weight:600;'>Without KV 97% Saturation ➔ With KV 23.0× GPU Speedup</span>"
         elif step == 2000:
-            regime = "<span style='color:#10b981;font-weight:600;'>Ch 1 98.6% Saturation ➔ Ch 2 33.6× GPU Speedup</span>"
+            regime = "<span style='color:#10b981;font-weight:600;'>Without KV 98.6% Saturation ➔ With KV 33.6× GPU Speedup</span>"
         elif step >= 2047:
-            regime = "<span style='color:#10b981;font-weight:600;'>Ch 1 98.6% Saturation ➔ Ch 2 32.7× GPU Speedup (Host Exposed)</span>"
+            regime = "<span style='color:#10b981;font-weight:600;'>Without KV 98.6% Saturation ➔ With KV 32.7× GPU Speedup (Host Exposed)</span>"
         else:
             regime = f"<span style='color:#34d399;font-weight:600;'>{sp_gpu:.1f}× GPU Speedup</span>"
 
@@ -1096,23 +1096,37 @@ def _build_physical_metrics_table_html(
         <tr>
             <td><strong>#{step}</strong></td>
             <td>
-                <div style="color:#fff;font-weight:700;">Ch 2: {tot2:.2f} ms</div>
-                <div style="color:#94a3b8;font-size:0.75rem;">Ch 1: {tot1:.2f} ms <strong class="delta-badge-good">{sp_tot:.1f}× faster</strong></div>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">{tot1:.1f}</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">{tot2:.2f}</span>
+                </div>
             </td>
             <td>
-                <div style="color:#10b981;font-weight:700;">Ch 2: {gpu2:.2f} ms ({gpu2_pct:.1f}%)</div>
-                <div style="color:#94a3b8;font-size:0.75rem;">Ch 1: {gpu1:.2f} ms ({gpu1_pct:.1f}%)</div>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">{gpu1:.1f}</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">{gpu2:.2f}</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">({gpu2_pct:.0f}%)</span>
+                </div>
             </td>
             <td>
                 <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 {sp_gpu:.1f}×</span>
             </td>
             <td>
-                <div style="color:#60a5fa;font-weight:700;">Ch 2: {cpu2:.2f} ms ({cpu2_pct:.1f}%)</div>
-                <div style="color:#94a3b8;font-size:0.75rem;">Ch 1: {cpu1:.2f} ms ({cpu1_pct:.1f}%)</div>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">{cpu1:.1f}</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">{cpu2:.2f}</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">({cpu2_pct:.0f}%)</span>
+                </div>
             </td>
             <td>
-                <span class="tag-badge" style="background:{duty2_col}22;color:{duty2_col};border:1px solid {duty2_col}44;font-weight:700;">Ch 2: {duty2:.1f}%</span>
-                <span style="color:#94a3b8;font-size:0.75rem;margin-left:0.35rem;">vs Ch 1: {duty1:.1f}%</span>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">{duty1:.0f}%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:{duty2_col}22;color:{duty2_col};border:1px solid {duty2_col}44;font-weight:700;">{duty2:.1f}%</span>
+                </div>
             </td>
             <td>{regime}</td>
         </tr>
@@ -1179,7 +1193,7 @@ def _build_dual_comparison_charts_svg(
 
         ch2_circles.append(f"""
             <circle cx="{x:.1f}" cy="{y2:.1f}" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {{name: 'Step #{step} KV Cache', domain: 'Latency: {tot2:.2f} ms', step: 'Ch 2: {tot2:.2f} ms vs Ch 1: {tot1:.2f} ms', dur_ms: {tot2}, other: 'Speedup: {sp_tot:.1f}× (Eliminated: {elim_ms:.1f} ms)'}})"
+                onmousemove="showTooltip(event, {{name: 'Step #{step} KV Cache', domain: 'Latency: {tot2:.2f} ms', step: 'With KV: {tot2:.2f} ms vs Without KV: {tot1:.2f} ms', dur_ms: {tot2}, other: 'Speedup: {sp_tot:.1f}× (Eliminated: {elim_ms:.1f} ms)'}})"
                 onmouseleave="hideTooltip()" />
             <text x="{x:.1f}" y="{y2 - 10:.1f}" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">{tot2:.1f}</text>
             <text x="{x:.1f}" y="{padT + chartH1 + 20}" text-anchor="middle" fill="#94a3b8" font-size="11">#{step}</text>
@@ -1187,7 +1201,7 @@ def _build_dual_comparison_charts_svg(
 
         ch1_circles.append(f"""
             <circle cx="{x:.1f}" cy="{y1:.1f}" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {{name: 'Step #{step} Naive Full Recomputation', domain: 'Latency: {tot1:.2f} ms', step: 'Ch 1: {tot1:.2f} ms vs Ch 2: {tot2:.2f} ms', dur_ms: {tot1}, other: 'Speedup: {sp_tot:.1f}×'}})"
+                onmousemove="showTooltip(event, {{name: 'Step #{step} Naive Full Recomputation', domain: 'Latency: {tot1:.2f} ms', step: 'Without KV: {tot1:.2f} ms vs With KV: {tot2:.2f} ms', dur_ms: {tot1}, other: 'Speedup: {sp_tot:.1f}×'}})"
                 onmouseleave="hideTooltip()" />
             <text x="{x:.1f}" y="{y1 - 10:.1f}" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">{tot1:.1f}</text>
         """)
@@ -1202,10 +1216,10 @@ def _build_dual_comparison_charts_svg(
             </div>
             <div style="display:flex; gap:1.25rem; font-size:0.78rem;">
                 <span style="display:flex; align-items:center; gap:0.4rem; color:#f87171; font-weight:600;">
-                    <span style="width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block;"></span> Chapter 1 Naive (O(N²))
+                    <span style="width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block;"></span> Without KV Cache Naive (O(N²))
                 </span>
                 <span style="display:flex; align-items:center; gap:0.4rem; color:#34d399; font-weight:600;">
-                    <span style="width:12px; height:12px; background:#10b981; border-radius:2px; display:inline-block;"></span> Chapter 2 KV Cache (O(N))
+                    <span style="width:12px; height:12px; background:#10b981; border-radius:2px; display:inline-block;"></span> With KV Cache KV Cache (O(N))
                 </span>
                 <span style="display:flex; align-items:center; gap:0.4rem; color:#fbbf24; font-weight:600;">
                     <span style="width:12px; height:12px; background:rgba(239,68,68,0.25); border:1px dashed #ef4444; border-radius:2px; display:inline-block;"></span> Eliminated Recomputation Waste
@@ -1227,11 +1241,11 @@ def _build_dual_comparison_charts_svg(
             {''.join(ch2_circles)}
 
             <rect x="{padL + 30}" y="{padT + 15}" width="340" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#ef4444" stroke-width="1" />
-            <text x="{padL + 40}" y="{padT + 34}" fill="#f87171" font-weight="700" font-size="11">🔴 Chapter 1 Naive Quadratic Explosion</text>
+            <text x="{padL + 40}" y="{padT + 34}" fill="#f87171" font-weight="700" font-size="11">🔴 Without KV Cache Naive Quadratic Explosion</text>
             <text x="{padL + 40}" y="{padT + 50}" fill="#94a3b8" font-size="10">Recomputing full history skyrockets to 415.1 ms at step 2000</text>
 
             <rect x="{w - padR - 380}" y="{h1 - padB - 70}" width="360" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#10b981" stroke-width="1" />
-            <text x="{w - padR - 370}" y="{h1 - padB - 51}" fill="#34d399" font-weight="700" font-size="11">🟢 Chapter 2 KV Cache Flat Execution</text>
+            <text x="{w - padR - 370}" y="{h1 - padB - 51}" fill="#34d399" font-weight="700" font-size="11">🟢 With KV Cache KV Cache Flat Execution</text>
             <text x="{w - padR - 370}" y="{h1 - padB - 35}" fill="#94a3b8" font-size="10">O(1) Projections + O(t) Vector Attention: flat at ~54–68 ms</text>
         </svg>
     </div>
@@ -1277,7 +1291,7 @@ def _build_dual_comparison_charts_svg(
 
         duty2_circles.append(f"""
             <circle cx="{x:.1f}" cy="{y_d2:.1f}" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {{name: 'Step #{step} KV Cache Duty Cycle', domain: 'Active GPU: {duty2:.1f}%', step: 'Ch 2 GPU: {gpu2:.2f} ms | Ch 2 CPU Gap: {cpu2:.2f} ms', dur_ms: {gpu2}, other: 'Ch 1 Duty: {duty1:.1f}%'}})"
+                onmousemove="showTooltip(event, {{name: 'Step #{step} KV Cache Duty Cycle', domain: 'Active GPU: {duty2:.1f}%', step: 'With KV GPU: {gpu2:.2f} ms | With KV CPU Gap: {cpu2:.2f} ms', dur_ms: {gpu2}, other: 'Without KV Duty: {duty1:.1f}%'}})"
                 onmouseleave="hideTooltip()" />
             <text x="{x:.1f}" y="{y_d2 - 10:.1f}" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">{duty2:.1f}%</text>
             <text x="{x:.1f}" y="{padT + chartH2 + 20}" text-anchor="middle" fill="#94a3b8" font-size="11">#{step}</text>
@@ -1285,7 +1299,7 @@ def _build_dual_comparison_charts_svg(
 
         duty1_circles.append(f"""
             <circle cx="{x:.1f}" cy="{y_d1:.1f}" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {{name: 'Step #{step} Naive Duty Cycle', domain: 'Active GPU: {duty1:.1f}%', step: 'Ch 1 GPU: {gpu1:.2f} ms | Ch 1 CPU Gap: {cpu1:.2f} ms', dur_ms: {gpu1}, other: 'Ch 2 Duty: {duty2:.1f}%'}})"
+                onmousemove="showTooltip(event, {{name: 'Step #{step} Naive Duty Cycle', domain: 'Active GPU: {duty1:.1f}%', step: 'Without KV GPU: {gpu1:.2f} ms | Without KV CPU Gap: {cpu1:.2f} ms', dur_ms: {gpu1}, other: 'With KV Duty: {duty2:.1f}%'}})"
                 onmouseleave="hideTooltip()" />
             <text x="{x:.1f}" y="{y_d1 - 10:.1f}" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">{duty1:.1f}%</text>
         """)
@@ -1300,10 +1314,10 @@ def _build_dual_comparison_charts_svg(
             </div>
             <div style="display:flex; gap:1.25rem; font-size:0.78rem;">
                 <span style="display:flex; align-items:center; gap:0.4rem; color:#f87171; font-weight:600;">
-                    <span style="width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block;"></span> Chapter 1 Duty Cycle (Pins at 98.6%)
+                    <span style="width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block;"></span> Without KV Cache Duty Cycle (Pins at 98.6%)
                 </span>
                 <span style="display:flex; align-items:center; gap:0.4rem; color:#38bdf8; font-weight:600;">
-                    <span style="width:12px; height:12px; background:#38bdf8; border-radius:2px; display:inline-block;"></span> Chapter 2 Duty Cycle (Flats at 18–22%)
+                    <span style="width:12px; height:12px; background:#38bdf8; border-radius:2px; display:inline-block;"></span> With KV Cache Duty Cycle (Flats at 18–22%)
                 </span>
             </div>
         </div>
@@ -1322,11 +1336,11 @@ def _build_dual_comparison_charts_svg(
             {''.join(duty2_circles)}
 
             <rect x="{padL + 30}" y="{padT + 15}" width="380" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#ef4444" stroke-width="1" />
-            <text x="{padL + 40}" y="{padT + 34}" fill="#f87171" font-weight="700" font-size="11">🔴 Chapter 1 Compute Saturation Regime</text>
+            <text x="{padL + 40}" y="{padT + 34}" fill="#f87171" font-weight="700" font-size="11">🔴 Without KV Cache Compute Saturation Regime</text>
             <text x="{padL + 40}" y="{padT + 50}" fill="#94a3b8" font-size="10">GPU SMs pinned at 98.6% re-evaluating past quadratic tokens</text>
 
             <rect x="{w - padR - 400}" y="{h2 - padB - 70}" width="380" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#38bdf8" stroke-width="1" />
-            <text x="{w - padR - 390}" y="{h2 - padB - 51}" fill="#38bdf8" font-weight="700" font-size="11">🔵 Chapter 2 Host Launch Starvation Regime</text>
+            <text x="{w - padR - 390}" y="{h2 - padB - 51}" fill="#38bdf8" font-weight="700" font-size="11">🔵 With KV Cache Host Launch Starvation Regime</text>
             <text x="{w - padR - 390}" y="{h2 - padB - 35}" fill="#94a3b8" font-size="10">GPU finishes compute in 12 ms and starves ~43 ms on Python dispatch</text>
         </svg>
     </div>
@@ -1340,7 +1354,7 @@ def _build_glossary_html() -> str:
         ("⚡ Active GPU Duty Cycle (%)",
          "<span class='tag-badge' style='background:rgba(56,189,248,0.2);color:#38bdf8;border:1px solid rgba(56,189,248,0.4);font-weight:700;'>Core Hardware Metric</span><br><br>"
          "The percentage of wall-clock token generation time that the GPU execution units (Streaming Multiprocessors / SMs) were actively executing kernel instructions on silicon: <code>(Total Active Kernel Time / Total Wall-Clock Time) * 100</code>.<br><br>"
-         "<strong>Chapter 1 vs. Chapter 2 Delta:</strong> In Chapter 1, duty cycle climbed from 31% to <strong>98.6%</strong> as the GPU was drowned in quadratic recomputation. In Chapter 2, caching keys and values cut active execution to ~12 ms/tok, dropping duty cycle down to <strong>~18–22%</strong> and exposing the host CPU dispatch bottleneck."),
+         "<strong>Without KV Cache vs. With KV Cache Delta:</strong> In Without KV Cache, duty cycle climbed from 31% to <strong>98.6%</strong> as the GPU was drowned in quadratic recomputation. In With KV Cache, caching keys and values cut active execution to ~12 ms/tok, dropping duty cycle down to <strong>~18–22%</strong> and exposing the host CPU dispatch bottleneck."),
 
         ("⏱️ Host CPU Launch & Driver Gaps",
          "<span class='tag-badge' style='background:rgba(96,165,250,0.2);color:#60a5fa;border:1px solid rgba(96,165,250,0.4);font-weight:700;'>Core Hardware Metric</span><br><br>"
@@ -1350,7 +1364,7 @@ def _build_glossary_html() -> str:
         ("🔥 Active GPU Kernel Execution Time",
          "<span class='tag-badge' style='background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);font-weight:700;'>Core Hardware Metric</span><br><br>"
          "The true elapsed silicon time spent by GPU Streaming Multiprocessors executing forward-pass operations, measured via CUDA hardware event timers with microsecond resolution.<br><br>"
-         "<strong>Systems Impact:</strong> Active kernel execution dropped from <strong>330.41 s (Ch 1)</strong> down to <strong>24.20 s (Ch 2)</strong> across 2,048 tokens—a massive <strong>13.7× / 16.4× compute reduction (-92.7%)</strong> achieved purely through algorithmic activation caching."),
+         "<strong>Systems Impact:</strong> Active kernel execution dropped from <strong>330.41 s (Without KV)</strong> down to <strong>24.20 s (With KV)</strong> across 2,048 tokens—a massive <strong>13.7× / 16.4× compute reduction (-92.7%)</strong> achieved purely through algorithmic activation caching."),
 
         ("📦 In-Place Contiguous KV Cache (KV_Cache_Update)",
          "<span class='tag-badge' style='background:rgba(234,179,8,0.2);color:#facc15;border:1px solid rgba(234,179,8,0.4);font-weight:700;'>KV-Cache Architecture</span><br><br>"
@@ -1369,7 +1383,7 @@ def _build_glossary_html() -> str:
 
         ("🚀 CUDA Graph Replay & Kernel Fusion Mitigations",
          "<span class='tag-badge' style='background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);font-weight:700;'>Production Mitigations</span><br><br>"
-         "Production serving engines (such as vLLM and TensorRT-LLM) employ two key architectural techniques to overcome the 69.3% host CPU dispatch gap exposed in Chapter 2:<br><br>"
+         "Production serving engines (such as vLLM and TensorRT-LLM) employ two key architectural techniques to overcome the 69.3% host CPU dispatch gap exposed in With KV Cache:<br><br>"
          "<strong>1. Kernel Fusion:</strong> Fuses RMSNorm, GEMM, SiLU, and addition kernels into unified CUDA kernels, reducing 732 launches to ~50.<br>"
          "<strong>2. CUDA Graphs:</strong> Records the entire token decode forward pass into an immutable hardware execution graph. The CPU launches the entire sequence in a single ~10 µs ioctl, pushing GPU duty cycle from ~22% to <strong>95%+</strong> and accelerating decode to <strong>80+ tok/s</strong>."),
     ]
@@ -1389,12 +1403,12 @@ def _build_glossary_html() -> str:
 def _build_expected_results_html() -> str:
     callout = """
     <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 0.6rem; padding: 0.85rem 1.15rem; margin-top: 1rem; color: #a7f3d0; font-size: 0.86rem; line-height: 1.5;">
-        <strong>📌 Chapter 2 Systems Invariants &amp; Architectural Checklist:</strong> Parameter counts, weight footprints, and cache dimensions are exact physical specifications of LLaMA-3.2-1B on NVIDIA L4 hardware. Unlike Chapter 1's naive recomputation baseline, the findings below represent the mathematical and physical invariants governing stateful Key-Value cached inference.
+        <strong>📌 With KV Cache Systems Invariants &amp; Architectural Checklist:</strong> Parameter counts, weight footprints, and cache dimensions are exact physical specifications of LLaMA-3.2-1B on NVIDIA L4 hardware. Unlike Without KV Cache's naive recomputation baseline, the findings below represent the mathematical and physical invariants governing stateful Key-Value cached inference.
     </div>
     """
     cards = [
         ("🔬 Invariant 1: Constant O(1) Projections & SwiGLU MLP Execution",
-         """In Chapter 1, linear projections processed the entire accumulated history ($S = t$ tokens), causing feed-forward layers to scale linearly with context length up to ~45 ms per step.<br><br>
+         """In Without KV Cache, linear projections processed the entire accumulated history ($S = t$ tokens), causing feed-forward layers to scale linearly with context length up to ~45 ms per step.<br><br>
          With KV caching, newly generated tokens are evaluated strictly one at a time ($S = 1$). Projections perform single-vector matrix multiplications (GEMV) rather than large matrix-matrix multiplies (GEMM):
          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
              <li><strong>W_q Projection:</strong> Strictly flat at <strong>~0.58 ms</strong> from step 0 to step 2047 (~8.39 MB weights per layer).</li>
@@ -1405,12 +1419,12 @@ def _build_expected_results_html() -> str:
          <strong>Empirical Invariant:</strong> KV caching decouples linear projection latency from context length: projection times at token #2000 are identical to token #1!"""),
 
         ("⚡ Invariant 2: Linear O(t) Attention Scaling via Vector-Matrix GEMV",
-         """In Chapter 1, full causal self-attention recalculated quadratic $O(t^2)$ matrix multiplications across all $t$ historical tokens, exploding from ~0.48 ms to 312.92 ms.<br><br>
+         """In Without KV Cache, full causal self-attention recalculated quadratic $O(t^2)$ matrix multiplications across all $t$ historical tokens, exploding from ~0.48 ms to 312.92 ms.<br><br>
          With KV caching, attention computes a single query vector ($1 \times D$) dot product against cached key vectors ($t \times D$), and multiplies the resulting attention distribution ($1 \times t$) with cached values ($t \times D$):
          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
-             <li><strong>Step #250:</strong> Attention compute takes <strong>0.38 ms</strong> (vs 2.36 ms in Ch 1 ➔ <strong>6.2× faster</strong>).</li>
-             <li><strong>Step #1000:</strong> Attention compute takes <strong>0.77 ms</strong> (vs 102.44 ms in Ch 1 ➔ <strong>133.0× faster</strong>).</li>
-             <li><strong>Step #2047:</strong> Attention compute takes <strong>1.34 ms</strong> (vs 312.92 ms in Ch 1 ➔ <strong>233.5× faster!</strong>).</li>
+             <li><strong>Step #250:</strong> Attention compute takes <strong>0.38 ms</strong> (vs 2.36 ms in Without KV ➔ <strong>6.2× faster</strong>).</li>
+             <li><strong>Step #1000:</strong> Attention compute takes <strong>0.77 ms</strong> (vs 102.44 ms in Without KV ➔ <strong>133.0× faster</strong>).</li>
+             <li><strong>Step #2047:</strong> Attention compute takes <strong>1.34 ms</strong> (vs 312.92 ms in Without KV ➔ <strong>233.5× faster!</strong>).</li>
          </ul>
          <strong>Empirical Invariant:</strong> Attention latency scales strictly linearly with context length $O(t)$, reducing attention compute time at token #2047 by an astonishing <strong>99.6%</strong>!"""),
 
@@ -1436,9 +1450,9 @@ def _build_expected_results_html() -> str:
          """Eliminating redundant quadratic compute triggers a profound dual inversion across hardware abstraction tiers:
          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
              <li><strong>Tier 1: Macro Wall-Clock Inversion (GPU ➔ Host-Bound):</strong><br>
-                 In Chapter 1, wall-clock time was <strong>93.7% GPU-bound</strong> (330.4s GPU vs 22.2s CPU gaps). In Chapter 2, active GPU time dropped to <strong>24.2s</strong>. Because GPU micro-kernels complete in ~5–15 µs, the GPU empties its queue and waits on the host Python interpreter for <strong>54.65s (69.3% idle gaps)</strong>. The system has shifted from GPU-bound to host CPU launch-bound.</li>
+                 In Without KV Cache, wall-clock time was <strong>93.7% GPU-bound</strong> (330.4s GPU vs 22.2s CPU gaps). In With KV Cache, active GPU time dropped to <strong>24.2s</strong>. Because GPU micro-kernels complete in ~5–15 µs, the GPU empties its queue and waits on the host Python interpreter for <strong>54.65s (69.3% idle gaps)</strong>. The system has shifted from GPU-bound to host CPU launch-bound.</li>
              <li><strong>Tier 2: Micro Silicon Inversion (Compute ➔ Memory-Bound):</strong><br>
-                 In Chapter 1, inside active GPU kernels, <strong>93.1%</strong> of time was spent on Tensor Core arithmetic (307.7s compute vs 22.7s memory). In Chapter 2, single-token decode ($S=1$) requires streaming 2.46 GB of weights for only 1 vector dot product—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution is now <strong>93.8% memory-bandwidth bound</strong> (22.7s memory streaming vs 1.5s compute).</li>
+                 In Without KV Cache, inside active GPU kernels, <strong>93.1%</strong> of time was spent on Tensor Core arithmetic (307.7s compute vs 22.7s memory). In With KV Cache, single-token decode ($S=1$) requires streaming 2.46 GB of weights for only 1 vector dot product—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution is now <strong>93.8% memory-bandwidth bound</strong> (22.7s memory streaming vs 1.5s compute).</li>
          </ul>
          <strong>Production Takeaway:</strong> In real-world inference engines (e.g. vLLM), <em>Kernel Fusion</em> reduces kernel count from 732 to ~50, and <em>CUDA Graphs</em> replays the entire forward pass in one ~10 µs dispatch—eliminating the 69.3% host CPU gap and driving decode throughput to <strong>80+ tok/s</strong>."""),
     ]
@@ -1470,7 +1484,7 @@ def generate_html_dashboard(
     2. Time Taken per Operation at Selected Time Step (select time step)
     3. Operation Latency Scaling Across Time Steps (choose operation)
     4. The Three Physical Metrics per Step (Stacked Latency Decomposition)
-    5. Head-to-Head Comparative Profiling against Chapter 1 Baseline
+    5. Head-to-Head Comparative Profiling against Without KV Cache Baseline
     """
     if not token_records:
         return
@@ -1639,7 +1653,7 @@ def generate_html_dashboard(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tiny_vllm - Chapter 2: KV-Cache Performance & Comparative Profiler</title>
+    <title>tiny_vllm - KV-Cache Performance & Comparative Profiler</title>
     <style>
         :root {{
             --bg-color: #0b0f19;
@@ -1917,12 +1931,12 @@ def generate_html_dashboard(
     <div class="container">
         <header>
             <div class="header-title">
-                <h1>⚡ tiny_vllm - Chapter 2: KV-Cache Performance & Comparative Profiler</h1>
-                <div class="subtitle">Comparing Chapter 1 (Naive Full Sequence Recomputation) vs. Chapter 2 (In-Place KV Cache) across {total_tokens} Tokens</div>
+                <h1>⚡ tiny_vllm - KV-Cache Performance & Comparative Profiler</h1>
+                <div class="subtitle">Comparing Without KV Cache (Naive Recomputation) vs. With KV Cache across {total_tokens} Tokens</div>
             </div>
             <div class="badge-group">
-                <span class="badge-ch1">Ch 1: {b_wall_sec:.1f}s &bull; {b_tps:.1f} tok/s</span>
-                <span class="badge-ch2">Ch 2: {total_wall_clock_sec:.1f}s &bull; {tokens_per_sec:.1f} tok/s</span>
+                <span class="badge-ch1">Without KV: {b_wall_sec:.1f}s &bull; {b_tps:.1f} tok/s</span>
+                <span class="badge-ch2">With KV: {total_wall_clock_sec:.1f}s &bull; {tokens_per_sec:.1f} tok/s</span>
                 <span class="badge-speedup">🟢 {wall_speedup:.1f}× Wall Speedup | {gpu_speedup:.1f}× Compute Reduction</span>
             </div>
         </header>
@@ -1940,73 +1954,109 @@ def generate_html_dashboard(
         <!-- SECTION A: EXECUTIVE SUMMARY -->
         <div class="section" id="section-summary">
             <div class="section-title">📋 Section A: Executive Summary & Performance High-Water Marks</div>
-            <div class="section-desc">Profile comparison of LLaMA-3.2-1B generating {total_tokens} tokens across {sampled_count} sampled checkpoints (16 Transformer Layers, GQA 32:8:8, Intermediate Dim 8192). Highlighting the comparative delta between Chapter 1 and Chapter 2.</div>
+            <div class="section-desc">Profile comparison of LLaMA-3.2-1B generating {total_tokens} tokens across {sampled_count} sampled checkpoints (16 Transformer Layers, GQA 32:8:8, Intermediate Dim 8192). Highlighting the comparative delta between Without KV Cache and With KV Cache.</div>
 
             <div class="kpi-grid" style="margin-bottom:1.5rem;">
                 <!-- KPI 1 -->
                 <div class="kpi-card" style="border-top: 3px solid #eab308;">
-                    <div class="kpi-label" style="color:#eab308;">Total Time to Generate Tokens</div>
-                    <div class="kpi-value-row">
-                        <div class="kpi-value" style="color:#eab308;">{total_wall_clock_sec:.1f} <span style="font-size:1rem;color:#94a3b8;">s</span></div>
-                        <span class="delta-badge-good">🟢 {wall_speedup:.1f}× Faster</span>
+                    <div class="kpi-title" style="color:#eab308;">Total Time to Generate Tokens</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_wall_sec:.1f}s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #eab308; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
+                            <div style="font-size: 1.25rem; font-weight: 700; color: #eab308;">{total_wall_clock_sec:.1f}s</div>
+                        </div>
                     </div>
-                    <div class="kpi-base">Ch 1 Baseline: <strong style="color:#f87171;">{b_wall_sec:.1f} s</strong> ({b_wall_sec/60:.2f} min) &bull; -{wall_saving_pct:.1f}% latency</div>
-                    <div class="kpi-sub">End-to-End Wall-Clock ({total_wall_clock_min:.2f} min total)</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 {wall_speedup:.1f}× Faster</span></div>
+                    <div class="kpi-sub" style="text-align: center;">End-to-End Wall-Clock Latency</div>
                 </div>
 
                 <!-- KPI 2 -->
                 <div class="kpi-card" style="border-top: 3px solid #10b981;">
-                    <div class="kpi-label" style="color: #34d399;">Active GPU Kernel Time</div>
-                    <div class="kpi-value-row">
-                        <div class="kpi-value" style="color: #34d399;">{total_gpu_active_sec:.1f} <span style="font-size:1rem;color:#94a3b8;">s</span></div>
-                        <span class="delta-badge-good">🟢 {gpu_speedup:.1f}× Compute Red.</span>
+                    <div class="kpi-title" style="color:#34d399;">Active GPU Kernel Time</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_gpu_sec:.1f}s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #34d399; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
+                            <div style="font-size: 1.25rem; font-weight: 700; color: #34d399;">{total_gpu_active_sec:.1f}s</div>
+                        </div>
                     </div>
-                    <div class="kpi-base">Ch 1 Baseline: <strong style="color:#f87171;">{b_gpu_sec:.1f} s</strong> (~193.6 ms/tok) &bull; -{gpu_saving_pct:.1f}%</div>
-                    <div class="kpi-sub">{total_gpu_pct:.1f}% of total (~{avg_gpu_active_ms:.2f} ms/tok active silicon)</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 {gpu_speedup:.1f}× Compute Red.</span></div>
+                    <div class="kpi-sub" style="text-align: center;">{total_gpu_pct:.1f}% of total (~{avg_gpu_active_ms:.2f} ms/tok active)</div>
                 </div>
 
                 <!-- KPI 3 -->
                 <div class="kpi-card" style="border-top: 3px solid #3b82f6;">
-                    <div class="kpi-label" style="color: #60a5fa;">Host CPU Launch Gaps (GPU Idle)</div>
-                    <div class="kpi-value-row">
-                        <div class="kpi-value" style="color: #60a5fa;">{total_host_cpu_gaps_sec:.1f} <span style="font-size:1rem;color:#94a3b8;">s</span></div>
-                        <span class="delta-badge-warn">⚠️ Host Bottleneck Unmasked</span>
+                    <div class="kpi-title" style="color:#60a5fa;">Host CPU Launch Gaps (GPU Idle)</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_cpu_sec:.1f}s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #60a5fa; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
+                            <div style="font-size: 1.25rem; font-weight: 700; color: #60a5fa;">{total_host_cpu_gaps_sec:.1f}s</div>
+                        </div>
                     </div>
-                    <div class="kpi-base">Ch 1 Baseline: <strong style="color:#94a3b8;">{b_cpu_sec:.1f} s</strong> ({b_cpu_pct:.1f}% idle) &bull; +{((total_host_cpu_gaps_sec-b_cpu_sec)/b_cpu_sec*100):.0f}%</div>
-                    <div class="kpi-sub">{total_cpu_pct:.1f}% of total (~{native_cpu_idle_ms:.2f} ms/tok native launch gap)</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-warn">⚠️ Host Bottleneck Unmasked</span></div>
+                    <div class="kpi-sub" style="text-align: center;">{total_cpu_pct:.1f}% of total (~{native_cpu_idle_ms:.2f} ms/tok gap)</div>
                 </div>
 
                 <!-- KPI 4 -->
                 <div class="kpi-card" style="border-top: 3px solid #f59e0b;">
-                    <div class="kpi-label" style="color: #fbbf24;">GPU Memory Streaming (Analytical)</div>
-                    <div class="kpi-value-row">
-                        <div class="kpi-value" style="color: #fbbf24;">{total_mem_sec:.1f} <span style="font-size:1rem;color:#94a3b8;">s</span></div>
-                        <span class="delta-badge-warn">📦 {mem_transfer_pct:.1f}% Mem-Bound</span>
+                    <div class="kpi-title" style="color:#fbbf24;">GPU Memory Streaming (Analytical)</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_mem_sec:.1f}s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #fbbf24; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
+                            <div style="font-size: 1.25rem; font-weight: 700; color: #fbbf24;">{total_mem_sec:.1f}s</div>
+                        </div>
                     </div>
-                    <div class="kpi-base">Ch 1 Baseline: <strong style="color:#94a3b8;">{b_mem_sec:.1f} s</strong> ({b_mem_pct:.1f}% of GPU time)</div>
-                    <div class="kpi-sub">Streaming 2.46 GB weights @ ~225 GB/s achieved bandwidth</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-warn">📦 {mem_transfer_pct:.1f}% Mem-Bound</span></div>
+                    <div class="kpi-sub" style="text-align: center;">Streaming 2.46 GB weights @ ~225 GB/s</div>
                 </div>
 
                 <!-- KPI 5 -->
                 <div class="kpi-card" style="border-top: 3px solid #8b5cf6;">
-                    <div class="kpi-label" style="color: #a78bfa;">GPU Compute Active (Analytical)</div>
-                    <div class="kpi-value-row">
-                        <div class="kpi-value" style="color: #a78bfa;">{total_comp_sec:.1f} <span style="font-size:1rem;color:#94a3b8;">s</span></div>
-                        <span class="delta-badge-good">🟢 {comp_reduction:.0f}× Math Red.</span>
+                    <div class="kpi-title" style="color:#a78bfa;">GPU Compute Active (Analytical)</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_comp_sec:.1f}s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #a78bfa; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
+                            <div style="font-size: 1.25rem; font-weight: 700; color: #a78bfa;">{total_comp_sec:.1f}s</div>
+                        </div>
                     </div>
-                    <div class="kpi-base">Ch 1 Baseline: <strong style="color:#f87171;">{b_comp_sec:.1f} s</strong> ({b_comp_pct:.1f}% of GPU time) &bull; -99.5%</div>
-                    <div class="kpi-sub">{compute_pct:.1f}% of GPU time (~{compute_ms:.2f} ms/tok arithmetic)</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 {comp_reduction:.0f}× Math Red.</span></div>
+                    <div class="kpi-sub" style="text-align: center;">{compute_pct:.1f}% of GPU time (~{compute_ms:.2f} ms/tok active)</div>
                 </div>
 
                 <!-- KPI 6 -->
                 <div class="kpi-card" style="border-top: 3px solid #06b6d4;">
-                    <div class="kpi-label" style="color: #22d3ee;">Throughput & Latency</div>
-                    <div class="kpi-value-row">
-                        <div class="kpi-value" style="color: #22d3ee;">{tokens_per_sec:.1f} <span style="font-size:1rem;color:#94a3b8;">tok/s</span></div>
-                        <span class="delta-badge-good">🟢 +{tps_gain:.0f}% Throughput</span>
+                    <div class="kpi-title" style="color:#22d3ee;">Throughput</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Without KV Cache</div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #94a3b8;">{b_tps:.1f} <span style="font-size:0.75rem;">tok/s</span></div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div style="font-size: 0.65rem; color: #22d3ee; text-transform: uppercase; margin-bottom: 0.2rem;">With KV Cache</div>
+                            <div style="font-size: 1.25rem; font-weight: 700; color: #22d3ee;">{tokens_per_sec:.1f} <span style="font-size:0.75rem;">tok/s</span></div>
+                        </div>
                     </div>
-                    <div class="kpi-base">Ch 1 Baseline: <strong style="color:#f87171;">{b_tps:.1f} tok/s</strong> ({b_avg_decode:.1f} ms/tok decode)</div>
-                    <div class="kpi-sub">Prefill: {prefill_latency:.1f} ms (Ch 2) vs {b_prefill:.1f} ms (Ch 1)</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem;"><span class="delta-badge-good">🟢 +{tps_gain:.0f}% Throughput</span></div>
+                    <div class="kpi-sub" style="text-align: center;">Decode: {avg_decode_latency:.1f} ms (With KV) vs {b_avg_decode:.1f} ms (Without KV)</div>
                 </div>
             </div>
 
@@ -2022,10 +2072,10 @@ def generate_html_dashboard(
                     <div style="font-size:0.85rem;font-weight:700;color:#e2e8f0;margin-bottom:0.4rem;">
                         Tier 1: Macro Wall-Clock Time Allocation (End-to-End Latency)
                     </div>
-                    <!-- Ch 1 Bar -->
+                    <!-- Without KV Bar -->
                     <div style="margin-bottom:0.45rem;">
                         <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>Chapter 1 (Naive Baseline &bull; {b_wall_sec:.1f} s total):</span>
+                            <span>Without KV Cache (Naive Baseline &bull; {b_wall_sec:.1f} s total):</span>
                             <span>Active GPU: <strong style="color:#f87171;">{b_gpu_pct:.1f}% ({b_gpu_sec:.1f}s)</strong> | Host Idle: <strong style="color:#60a5fa;">{b_cpu_pct:.1f}% ({b_cpu_sec:.1f}s)</strong></span>
                         </div>
                         <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
@@ -2037,10 +2087,10 @@ def generate_html_dashboard(
                             </div>
                         </div>
                     </div>
-                    <!-- Ch 2 Bar -->
+                    <!-- With KV Bar -->
                     <div>
                         <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>Chapter 2 (KV Cache &bull; {total_wall_clock_sec:.1f} s total &bull; <strong style="color:#34d399;">{wall_speedup:.1f}× Faster</strong>):</span>
+                            <span>With KV Cache (KV Cache &bull; {total_wall_clock_sec:.1f} s total &bull; <strong style="color:#34d399;">{wall_speedup:.1f}× Faster</strong>):</span>
                             <span>Active GPU: <strong style="color:#34d399;">{total_gpu_pct:.1f}% ({total_gpu_active_sec:.1f}s)</strong> | Host Idle: <strong style="color:#60a5fa;">{total_cpu_pct:.1f}% ({total_host_cpu_gaps_sec:.1f}s)</strong></span>
                         </div>
                         <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
@@ -2059,10 +2109,10 @@ def generate_html_dashboard(
                     <div style="font-size:0.85rem;font-weight:700;color:#e2e8f0;margin-bottom:0.4rem;">
                         Tier 2: Inside Active GPU Silicon Execution (Analytical Roofline Inversion)
                     </div>
-                    <!-- Ch 1 Roofline -->
+                    <!-- Without KV Roofline -->
                     <div style="margin-bottom:0.45rem;">
                         <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>Chapter 1 Active GPU ({b_gpu_sec:.1f} s kernel time &bull; Compute-Bound):</span>
+                            <span>Without KV Cache Active GPU ({b_gpu_sec:.1f} s kernel time &bull; Compute-Bound):</span>
                             <span>Memory Transfer: <strong style="color:#fbbf24;">{b_mem_pct:.1f}% ({b_mem_sec:.1f}s)</strong> | Tensor Compute: <strong style="color:#f87171;">{b_comp_pct:.1f}% ({b_comp_sec:.1f}s)</strong></span>
                         </div>
                         <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
@@ -2074,10 +2124,10 @@ def generate_html_dashboard(
                             </div>
                         </div>
                     </div>
-                    <!-- Ch 2 Roofline -->
+                    <!-- With KV Roofline -->
                     <div>
                         <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.2rem;">
-                            <span>Chapter 2 Active GPU ({total_gpu_active_sec:.1f} s kernel time &bull; Memory-Bound Inversion):</span>
+                            <span>With KV Cache Active GPU ({total_gpu_active_sec:.1f} s kernel time &bull; Memory-Bound Inversion):</span>
                             <span>Memory Transfer: <strong style="color:#fbbf24;">{mem_transfer_pct:.1f}% ({total_mem_sec:.1f}s)</strong> | Tensor Compute: <strong style="color:#a78bfa;">{compute_pct:.1f}% ({total_comp_sec:.1f}s)</strong></span>
                         </div>
                         <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;background:#1e293b;">
@@ -2096,9 +2146,9 @@ def generate_html_dashboard(
             <div style="background:rgba(15,23,42,0.8);border:1px solid #1e293b;border-radius:0.6rem;padding:1rem 1.25rem;">
                 <div style="font-weight:700;font-size:0.95rem;color:#fff;margin-bottom:0.4rem;">🎯 Key Comparative Insights & Hardware Bottleneck Analysis:</div>
                 <ul style="margin-left:1.25rem;color:#cbd5e1;font-size:0.88rem;line-height:1.7;">
-                    <li><strong>Elimination of O(N²) Quadratic Growth:</strong> In Chapter 1, recomputing full sequence history caused attention latency to explode from 0.48 ms to 312.92 ms (407.06 ms total step latency). In Chapter 2, KV caching stores past key/value states, keeping linear projections strictly flat (~6.4 ms for SwiGLU, ~0.9 ms for QKV) and attention scaling gracefully as linear vector-matrix GEMV (~1.34 ms at step 2047, a <strong>233.5× speedup</strong>).</li>
-                    <li><strong>Tier 1 Wall-Clock Bottleneck Shift (Host CPU Launch-Bound):</strong> In Chapter 1, wall-clock time was 93.7% GPU-bound. In Chapter 2, because individual GPU micro-kernels finish in just 5–15 µs, the GPU completes all math in ~12 ms/tok and starves for ~43 ms waiting for the Python interpreter to enqueue kernels. Consequently, <strong>{total_host_cpu_gaps_sec:.1f}s ({total_cpu_pct:.1f}%)</strong> of generation time is host CPU dispatch dead time.</li>
-                    <li><strong>Tier 2 Inside-GPU Bottleneck Inversion (Memory-Bandwidth Bound):</strong> In Chapter 1, 93.1% of GPU time was spent crunching tensor arithmetic. In Chapter 2, single-token decode ($S=1$) reads 2.46 GB of weights for 1 vector multiply—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution has completely inverted from compute-bound to <strong>93.8% memory-bandwidth bound</strong>.</li>
+                    <li><strong>Elimination of O(N²) Quadratic Growth:</strong> In Without KV Cache, recomputing full sequence history caused attention latency to explode from 0.48 ms to 312.92 ms (407.06 ms total step latency). In With KV Cache, KV caching stores past key/value states, keeping linear projections strictly flat (~6.4 ms for SwiGLU, ~0.9 ms for QKV) and attention scaling gracefully as linear vector-matrix GEMV (~1.34 ms at step 2047, a <strong>233.5× speedup</strong>).</li>
+                    <li><strong>Tier 1 Wall-Clock Bottleneck Shift (Host CPU Launch-Bound):</strong> In Without KV Cache, wall-clock time was 93.7% GPU-bound. In With KV Cache, because individual GPU micro-kernels finish in just 5–15 µs, the GPU completes all math in ~12 ms/tok and starves for ~43 ms waiting for the Python interpreter to enqueue kernels. Consequently, <strong>{total_host_cpu_gaps_sec:.1f}s ({total_cpu_pct:.1f}%)</strong> of generation time is host CPU dispatch dead time.</li>
+                    <li><strong>Tier 2 Inside-GPU Bottleneck Inversion (Memory-Bandwidth Bound):</strong> In Without KV Cache, 93.1% of GPU time was spent crunching tensor arithmetic. In With KV Cache, single-token decode ($S=1$) reads 2.46 GB of weights for 1 vector multiply—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution has completely inverted from compute-bound to <strong>93.8% memory-bandwidth bound</strong>.</li>
                     <li><strong>Production Solutions:</strong> In production engines (such as vLLM and TensorRT-LLM), <em>Kernel Fusion</em> reduces kernel launches from 732 down to ~50, and <em>CUDA Graphs</em> replays the entire forward pass in a single 10 µs host invocation, cutting wall-clock decode latency down to ~12 ms/tok and pushing throughput to <strong>80+ tok/s</strong>.</li>
                 </ul>
             </div>
@@ -2107,21 +2157,21 @@ def generate_html_dashboard(
         <!-- SECTION B: FORWARD-PASS OPERATION EXECUTION TABLE -->
         <div class="section" id="section-forward-table">
             <div class="section-title">📋 Section B: Forward-Pass Operation Execution Table (Per Step)</div>
-            <div class="section-desc">Interactive forward-pass table comparing operation execution times across all {sampled_count} sampled checkpoints. Use the tabs below to switch between the Comparative Delta view, pure Chapter 2 KV Cache numbers, and the Chapter 1 baseline.</div>
+            <div class="section-desc">Interactive forward-pass table comparing operation execution times across all {sampled_count} sampled checkpoints. Use the tabs below to switch between the Comparative Delta view, pure With KV Cache KV Cache numbers, and the Without KV Cache baseline.</div>
             {forward_table_html}
         </div>
 
         <!-- SECTION C: HARDWARE EXECUTION & HOST DISPATCH DECOMPOSITION TABLE -->
         <div class="section" id="section-physical-table">
             <div class="section-title">⚡ Section C: Hardware Execution & Host Dispatch Decomposition Table</div>
-            <div class="section-desc">Head-to-head physical hardware decomposition comparing Chapter 1 Naive vs. Chapter 2 KV Cache across Total Step Latency, Active GPU Execution Time, Host CPU Launch Gaps, and GPU Duty Cycle percentage.</div>
+            <div class="section-desc">Head-to-head physical hardware decomposition comparing Without KV Cache Naive vs. With KV Cache KV Cache across Total Step Latency, Active GPU Execution Time, Host CPU Launch Gaps, and GPU Duty Cycle percentage.</div>
             {physical_metrics_table_html}
         </div>
 
         <!-- SECTION D: DUAL COMPARATIVE VISUAL CHARTS -->
         <div class="section" id="section-dual-charts">
             <div class="section-title">📈 Section D: Dual Comparative Visual Charts</div>
-            <div class="section-desc">Interactive SVG charts demonstrating the two fundamental systems transformations between Chapter 1 and Chapter 2: the elimination of quadratic latency explosion (Chart 1) and the active GPU duty cycle inversion from compute saturation to host dispatch starvation (Chart 2).</div>
+            <div class="section-desc">Interactive SVG charts demonstrating the two fundamental systems transformations between Without KV Cache and With KV Cache: the elimination of quadratic latency explosion (Chart 1) and the active GPU duty cycle inversion from compute saturation to host dispatch starvation (Chart 2).</div>
             {dual_charts_svg}
         </div>
 
@@ -2238,7 +2288,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate or regenerate HTML dashboard from token metrics JSON.")
     parser.add_argument("--json", type=str, default=default_json, help="Path to token_metrics.json")
     parser.add_argument("--output", type=str, default=default_output, help="Path to output HTML file")
-    parser.add_argument("--baseline-json", type=str, default=None, help="Path to Chapter 1 baseline token_metrics.json")
+    parser.add_argument("--baseline-json", type=str, default=None, help="Path to Without KV Cache baseline token_metrics.json")
     parser.add_argument("--terminal", action="store_true", default=False, help="Also print terminal summary tables")
     cli_args = parser.parse_args()
 
