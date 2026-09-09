@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tiny_vllm - KV-Cache Performance & Comparative Profiler</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #111827;
+            --card-border: #1f2937;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent-blue: #38bdf8;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #a855f7;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --track-bg: #131b2c;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 2rem;
+            line-height: 1.5;
+        }
+        .container { max-width: 1440px; margin: 0 auto; }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 1.25rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .header-title h1 {
+            font-size: 1.85rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            letter-spacing: -0.02em;
+        }
+        .header-title .subtitle {
+            color: var(--text-muted);
+            font-size: 0.92rem;
+            margin-top: 0.35rem;
+        }
+        .badge-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .badge-ch1 {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 0.35rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .badge-ch2 {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 0.35rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .badge-speedup {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 0.35rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .delta-badge-good {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 0.12rem 0.45rem;
+            border-radius: 9999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+        .delta-badge-warn {
+            display: inline-block;
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            padding: 0.12rem 0.45rem;
+            border-radius: 9999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+        .delta-badge-neutral {
+            display: inline-block;
+            background: rgba(148, 163, 184, 0.15);
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            padding: 0.12rem 0.45rem;
+            border-radius: 9999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+
+        /* Quick Navigation Bar */
+        .nav-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-bottom: 1.75rem;
+            padding: 0.75rem 1rem;
+            background: rgba(17, 24, 39, 0.7);
+            border: 1px solid var(--card-border);
+            border-radius: 0.6rem;
+        }
+        .nav-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.375rem;
+            background: #1f2937;
+            transition: all 0.15s ease;
+        }
+        .nav-link:hover {
+            color: #fff;
+            background: #374151;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .kpi-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 0.75rem;
+            padding: 1.1rem 1.25rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .kpi-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+        .kpi-value-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .kpi-value {
+            font-size: 1.65rem;
+            font-weight: 700;
+            color: #fff;
+            font-family: monospace;
+        }
+        .kpi-base {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+            line-height: 1.35;
+        }
+        .kpi-sub {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-top: 0.35rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 0.35rem;
+        }
+
+        .section {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .section-desc {
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            margin: 0.35rem 0 1.25rem 0;
+        }
+
+        .tab-btn {
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            padding: 0.45rem 0.95rem;
+            border-radius: 0.45rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .tab-btn:hover {
+            background: #334155;
+            color: #fff;
+        }
+        .tab-btn.active {
+            background: #2563eb;
+            border-color: #3b82f6;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+        }
+
+        /* Tooltip & Inspector */
+        .tooltip {
+            position: fixed;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid var(--accent-blue);
+            color: #fff;
+            padding: 0.65rem 0.9rem;
+            border-radius: 0.5rem;
+            font-size: 0.78rem;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7);
+            max-width: 340px;
+        }
+        .tooltip-title { font-weight: 700; color: var(--accent-blue); margin-bottom: 0.25rem; }
+        .tooltip-row { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.15rem; }
+        .tooltip-label { color: var(--text-muted); }
+
+        /* SVG & Tables */
+        svg { width: 100%; height: auto; overflow: visible; }
+        .chart-svg text { font-family: monospace; font-size: 11px; fill: var(--text-muted); }
+        .grid-line { stroke: var(--card-border); stroke-dasharray: 4; stroke-width: 0.8; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; }
+        th, td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--card-border); }
+        th { background: rgba(15, 23, 42, 0.8); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; }
+        tr:hover { background: rgba(56, 189, 248, 0.05); }
+        .data-table th, .data-table td { text-align: right; white-space: nowrap; }
+        .data-table th:first-child, .data-table td:first-child { text-align: left; }
+        .tag-badge {
+            font-size: 0.65rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        /* === NEW KPI DASHBOARD CSS === */
+        .kpi-card {
+            background: #0f172a !important;
+            border: 1px solid #1e293b !important;
+            border-radius: 0.5rem !important;
+            padding: 1.25rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+        }
+        .kpi-title {
+            color: #f8fafc;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-align: center;
+        }
+        .kpi-compare-box {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0.5rem 0;
+            gap: 1rem;
+        }
+        .kpi-compare-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .kpi-label-old { color: #64748b; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }
+        .kpi-val-old { color: #94a3b8; font-size: 1.25rem; font-weight: 700; }
+        .kpi-label-new { color: #38bdf8; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }
+        .kpi-val-new { color: #e0f2fe; font-size: 1.25rem; font-weight: 700; }
+        
+        /* === NEW BAR CHART CSS === */
+        .chart-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 220px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 0.5rem;
+            padding: 2rem 1rem 1rem 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .bar-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            height: 100%;
+            width: 100px;
+        }
+        .bar-pair {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-grow: 1;
+            width: 100%;
+        }
+        .bar {
+            width: 35px;
+            border-radius: 4px 4px 0 0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #fff;
+            transition: height 0.3s ease;
+        }
+        .old-bar { background: #475569; }
+        .new-bar { background: #38bdf8; }
+        .group-label {
+            color: #cbd5e1;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .chart-legend {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .legend-item { display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; font-size: 0.8rem; }
+        .legend-box { width: 12px; height: 12px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div id="tooltip" class="tooltip"></div>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>⚡ tiny_vllm - KV-Cache Performance & Comparative Profiler</h1>
+                <div class="subtitle">Comparing Without KV Cache (Naive Recomputation) vs. With KV Cache across 2048 Tokens</div>
+            </div>
+            <div class="badge-group">
+                <span class="badge-ch1">Without KV: 352.6s &bull; 5.8 tok/s</span>
+                <span class="badge-ch2">With KV: 78.9s &bull; 26.0 tok/s</span>
+                <span class="badge-speedup">🟢 4.5× Wall Speedup | 13.7× Compute Reduction</span>
+            </div>
+        </header>
+
+        <!-- QUICK NAVIGATION -->
+        <nav class="nav-bar">
+            <a href="#section-summary" class="nav-link">📋 A. Executive Summary (Comparative)</a>
+            <a href="#section-forward-table" class="nav-link">📋 B. Forward-Pass Table (Delta Tabs)</a>
+            <a href="#section-physical-table" class="nav-link">⚡ C. Hardware Decomposition Table</a>
+            <a href="#section-dual-charts" class="nav-link">📈 D. Dual Comparative Charts</a>
+            <a href="#section-glossary" class="nav-link">📖 E. Systems Glossary</a>
+            <a href="#section-expected-results" class="nav-link">🔬 F. KV-Cache Invariants</a>
+        </nav>
+
+        <!-- SECTION A: EXECUTIVE SUMMARY -->
+        <div class="section" id="section-summary">
+            <div class="section-title">📋 Section A: Executive Summary & Performance High-Water Marks</div>
+            <div class="section-desc">Profile comparison of LLaMA-3.2-1B generating 2048 tokens across 10 sampled checkpoints (16 Transformer Layers, GQA 32:8:8, Intermediate Dim 8192). Highlighting the comparative delta between Without KV Cache and With KV Cache.</div>
+
+            <div class="kpi-grid" style="margin-bottom:1.5rem;">
+                <!-- KPI 1 -->
+                <div class="kpi-card">
+                    <div class="kpi-title">Total Time to Generate Tokens</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">352.6s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #38bdf8;">78.9s</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 4.5× Faster</span></div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="kpi-card">
+                    <div class="kpi-title">Active GPU Kernel Time</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">330.4s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #34d399;">24.2s</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 13.7× Compute Red.</span></div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="kpi-card">
+                    <div class="kpi-title">Host CPU Launch Gaps (Idle)</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">22.2s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #fbbf24;">54.7s</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;"><span class="delta-badge-warn">⚠️ Host Bottleneck Unmasked</span></div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="kpi-card">
+                    <div class="kpi-title">GPU Memory Streaming</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">22.7s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new">22.7s</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;"><span class="delta-badge-warn">📦 93.8% Mem-Bound</span></div>
+                </div>
+
+                <!-- KPI 5 -->
+                <div class="kpi-card">
+                    <div class="kpi-title">GPU Compute Active</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">307.7s</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #a78bfa;">1.5s</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 205× Math Red.</span></div>
+                </div>
+
+                <!-- KPI 6 -->
+                <div class="kpi-card">
+                    <div class="kpi-title">Throughput</div>
+                    <div class="kpi-compare-box">
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-old">Without KV</div>
+                            <div class="kpi-val-old">5.8</div>
+                        </div>
+                        <div class="kpi-compare-col">
+                            <div class="kpi-label-new">With KV</div>
+                            <div class="kpi-val-new" style="color: #22d3ee;">26.0</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 +347% Throughput</span></div>
+                </div>
+            </div>
+
+            <!-- COMPARATIVE TWO-TIER HARDWARE TIME ALLOCATION BARS -->
+            <div style="background:#0f172a;border:1px solid var(--card-border);border-radius:0.75rem;padding:1.25rem;margin-bottom:1.5rem;">
+                <div style="font-size:0.95rem;font-weight:700;color:#f8fafc;margin-bottom:1rem;text-align:center;">
+                    📊 Two-Tier Hardware Time Allocation Breakdown (Head-to-Head Comparison)
+                </div>
+                
+                <div class="chart-legend">
+                    <div class="legend-item"><div class="legend-box old-bar"></div> Without KV Cache</div>
+                    <div class="legend-item"><div class="legend-box new-bar"></div> With KV Cache</div>
+                </div>
+
+                <div class="chart-container">
+                    <!-- Group 1 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: 100.0%;" title="352.6s"><span>352.6s</span></div>
+                            <div class="bar new-bar" style="height: 22.4%;" title="78.9s"><span>78.9s</span></div>
+                        </div>
+                        <div class="group-label">Total<br>Wall Clock</div>
+                    </div>
+                    
+                    <!-- Group 2 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: 93.7%;" title="330.4s"><span>330.4s</span></div>
+                            <div class="bar new-bar" style="height: 6.9%;" title="24.2s"><span>24.2s</span></div>
+                        </div>
+                        <div class="group-label">Active GPU<br>Execution</div>
+                    </div>
+
+                    <!-- Group 3 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: 6.3%;" title="22.2s"><span>22.2s</span></div>
+                            <div class="bar new-bar" style="height: 15.5%;" title="54.7s"><span>54.7s</span></div>
+                        </div>
+                        <div class="group-label">Host CPU<br>Idle Gaps</div>
+                    </div>
+
+                    <!-- Group 4 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: 6.4%;" title="22.7s"><span>22.7s</span></div>
+                            <div class="bar new-bar" style="height: 6.4%;" title="22.7s"><span>22.7s</span></div>
+                        </div>
+                        <div class="group-label">GPU Memory<br>Streaming</div>
+                    </div>
+
+                    <!-- Group 5 -->
+                    <div class="bar-group">
+                        <div class="bar-pair">
+                            <div class="bar old-bar" style="height: 87.3%;" title="307.7s"><span>307.7s</span></div>
+                            <div class="bar new-bar" style="height: 0.4%;" title="1.5s"><span>1.5s</span></div>
+                        </div>
+                        <div class="group-label">GPU Tensor<br>Compute</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KEY INSIGHTS CALLOUT -->
+            <div style="background:rgba(15,23,42,0.8);border:1px solid #1e293b;border-radius:0.6rem;padding:1rem 1.25rem;">
+                <div style="font-weight:700;font-size:0.95rem;color:#fff;margin-bottom:0.4rem;">🎯 Key Comparative Insights & Hardware Bottleneck Analysis:</div>
+                <ul style="margin-left:1.25rem;color:#cbd5e1;font-size:0.88rem;line-height:1.7;">
+                    <li><strong>Elimination of O(N²) Quadratic Growth:</strong> In Without KV Cache, recomputing full sequence history caused attention latency to explode from 0.48 ms to 312.92 ms (407.06 ms total step latency). In With KV Cache, KV caching stores past key/value states, keeping linear projections strictly flat (~6.4 ms for SwiGLU, ~0.9 ms for QKV) and attention scaling gracefully as linear vector-matrix GEMV (~1.34 ms at step 2047, a <strong>233.5× speedup</strong>).</li>
+                    <li><strong>Tier 1 Wall-Clock Bottleneck Shift (Host CPU Launch-Bound):</strong> In Without KV Cache, wall-clock time was 93.7% GPU-bound. In With KV Cache, because individual GPU micro-kernels finish in just 5–15 µs, the GPU completes all math in ~12 ms/tok and starves for ~43 ms waiting for the Python interpreter to enqueue kernels. Consequently, <strong>54.7s (69.3%)</strong> of generation time is host CPU dispatch dead time.</li>
+                    <li><strong>Tier 2 Inside-GPU Bottleneck Inversion (Memory-Bandwidth Bound):</strong> In Without KV Cache, 93.1% of GPU time was spent crunching tensor arithmetic. In With KV Cache, single-token decode ($S=1$) reads 2.46 GB of weights for 1 vector multiply—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution has completely inverted from compute-bound to <strong>93.8% memory-bandwidth bound</strong>.</li>
+                    <li><strong>Production Solutions:</strong> In production engines (such as vLLM and TensorRT-LLM), <em>Kernel Fusion</em> reduces kernel launches from 732 down to ~50, and <em>CUDA Graphs</em> replays the entire forward pass in a single 10 µs host invocation, cutting wall-clock decode latency down to ~12 ms/tok and pushing throughput to <strong>80+ tok/s</strong>.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- SECTION B: FORWARD-PASS OPERATION EXECUTION TABLE -->
+        <div class="section" id="section-forward-table">
+            <div class="section-title">📋 Section B: Forward-Pass Operation Execution Table (Per Step)</div>
+            <div class="section-desc">Interactive forward-pass table comparing operation execution times across all 10 sampled checkpoints. Use the tabs below to switch between the Comparative Delta view, pure With KV Cache KV Cache numbers, and the Without KV Cache baseline.</div>
+            
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem; padding:0.6rem 0.9rem; background:rgba(15,23,42,0.6); border:1px solid var(--card-border); border-radius:0.6rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">View Table Mode:</span>
+            <button id="btn-tab-delta" class="tab-btn active" onclick="switchTableTab('tab-delta')">⚡ Comparative Delta (With KV vs Without KV)</button>
+            <button id="btn-tab-ch2" class="tab-btn" onclick="switchTableTab('tab-ch2')">🟢 With KV Cache</button>
+            <button id="btn-tab-ch1" class="tab-btn" onclick="switchTableTab('tab-ch1')">🔴 Without KV Cache: Naive Baseline</button>
+        </div>
+        <div style="font-size:0.78rem; color:#94a3b8;">
+            💡 Highlighting linear scaling vs quadratic attention explosion
+        </div>
+    </div>
+
+    <!-- TAB 1: DELTA -->
+    <div id="tab-delta" class="tab-content" style="overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg);">
+        <table class="data-table">
+            <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Emb</th><th style='white-space:nowrap;'>Norm1</th><th style='white-space:nowrap;'>Q_proj</th><th style='white-space:nowrap;'>K_proj</th><th style='white-space:nowrap;'>V_proj</th><th style='white-space:nowrap;'>RoPE</th><th style='white-space:nowrap;'>KV_Store</th><th style='white-space:nowrap;'>Attn_Comp (Delta)</th><th style='white-space:nowrap;'>O_proj</th><th style='white-space:nowrap;'>Norm2</th><th style='white-space:nowrap;'>Gate+Up (Delta)</th><th style='white-space:nowrap;'>Down (Delta)</th><th style='white-space:nowrap;'>LMHead</th><th style='white-space:nowrap;'>Total Step Latency</th><th style='white-space:nowrap;'>Speedup</th></tr></thead>
+            <tbody><tr><td><strong>#0</strong></td><td>0.01</td><td>0.34</td><td style='color:#ef4444;font-weight:600;'>0.59</td><td style='color:#f97316;'>0.20</td><td style='color:#eab308;'>0.21</td><td>0.36</td><td style='color:#38bdf8;font-weight:700;'>0.036</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.41</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 0.5 <strong class='delta-badge-good'>1.2×</strong></span></td><td>0.61</td><td>0.32</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.51</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 4.7 <strong class='delta-badge-good'>1.1×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.19</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 2.2 <strong class='delta-badge-good'>1.0×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>87.37</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 831.7 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 9.5×</span></td></tr><tr><td><strong>#250</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.38</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 2.4 <strong class='delta-badge-good'>6.2×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.31</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 7.2 <strong class='delta-badge-good'>1.7×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 3.2 <strong class='delta-badge-good'>1.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.51</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 62.3 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.1×</span></td></tr><tr><td><strong>#500</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.52</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 15.4 <strong class='delta-badge-good'>29.4×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 10.4 <strong class='delta-badge-good'>2.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 5.3 <strong class='delta-badge-good'>2.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>54.31</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 57.0 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.0×</span></td></tr><tr><td><strong>#750</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.60</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 46.4 <strong class='delta-badge-good'>77.6×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 13.8 <strong class='delta-badge-good'>3.2×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 7.4 <strong class='delta-badge-good'>3.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.56</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 86.6 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.5×</span></td></tr><tr><td><strong>#1000</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.77</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 102.4 <strong class='delta-badge-good'>133.0×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 16.6 <strong class='delta-badge-good'>3.8×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 8.7 <strong class='delta-badge-good'>4.2×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>56.32</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 151.1 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 2.7×</span></td></tr><tr><td><strong>#1250</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.88</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 152.2 <strong class='delta-badge-good'>172.7×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 23.6 <strong class='delta-badge-good'>5.5×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 12.1 <strong class='delta-badge-good'>5.8×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>57.34</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 216.3 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 3.8×</span></td></tr><tr><td><strong>#1500</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.03</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 205.3 <strong class='delta-badge-good'>200.2×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 28.8 <strong class='delta-badge-good'>6.7×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 13.4 <strong class='delta-badge-good'>6.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>56.43</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 282.2 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 5.0×</span></td></tr><tr><td><strong>#1750</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.07</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 259.2 <strong class='delta-badge-good'>243.0×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 30.9 <strong class='delta-badge-good'>7.2×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 15.6 <strong class='delta-badge-good'>7.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.06</td><td><strong style='color:#fff;font-size:0.95rem;'>55.42</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 343.4 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 6.2×</span></td></tr><tr><td><strong>#2000</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.23</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 324.3 <strong class='delta-badge-good'>263.8×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.31</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 31.7 <strong class='delta-badge-good'>7.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 17.0 <strong class='delta-badge-good'>8.1×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.06</td><td><strong style='color:#fff;font-size:0.95rem;'>68.01</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 415.1 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 6.1×</span></td></tr><tr><td><strong>#2047</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.036</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.34</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 312.9 <strong class='delta-badge-good'>233.8×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.31</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 33.6 <strong class='delta-badge-good'>7.8×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 17.7 <strong class='delta-badge-good'>8.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>54.61</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 407.1 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 7.5×</span></td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- TAB 2: CH 2 -->
+    <div id="tab-ch2" class="tab-content" style="display:none; overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg);">
+        <table class="data-table">
+            <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Emb</th><th style='white-space:nowrap;'>Norm1</th><th style='white-space:nowrap;'>Q_proj</th><th style='white-space:nowrap;'>K_proj</th><th style='white-space:nowrap;'>V_proj</th><th style='white-space:nowrap;'>RoPE</th><th style='white-space:nowrap;'>KV_Store</th><th style='white-space:nowrap;'>Attn</th><th style='white-space:nowrap;'>O_proj</th><th style='white-space:nowrap;'>Norm2</th><th style='white-space:nowrap;'>Gate+Up</th><th style='white-space:nowrap;'>Act*Mul</th><th style='white-space:nowrap;'>Down</th><th style='white-space:nowrap;'>NormEnd</th><th style='white-space:nowrap;'>LMHead</th><th style='white-space:nowrap;'>Sample</th><th style='white-space:nowrap;'>Total (ms)</th></tr></thead>
+            <tbody><tr><td><strong>#0</strong></td><td>0.008</td><td>0.34</td><td style='color:#3b82f6;font-weight:600;'>0.59</td><td>0.20</td><td>0.21</td><td>0.36</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.41</td><td>0.61</td><td>0.32</td><td style='color:#3b82f6;font-weight:600;'>4.51</td><td>0.05</td><td>2.19</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>87.37</strong></td></tr><tr><td><strong>#250</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.38</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.31</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.51</strong></td></tr><tr><td><strong>#500</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.52</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>54.31</strong></td></tr><tr><td><strong>#750</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.60</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.56</strong></td></tr><tr><td><strong>#1000</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.77</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>56.32</strong></td></tr><tr><td><strong>#1250</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.88</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>57.34</strong></td></tr><tr><td><strong>#1500</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.03</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>56.43</strong></td></tr><tr><td><strong>#1750</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.07</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.06</td><td>0.03</td><td><strong style='color:#fff;'>55.42</strong></td></tr><tr><td><strong>#2000</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.23</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.31</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.06</td><td>0.03</td><td><strong style='color:#fff;'>68.01</strong></td></tr><tr><td><strong>#2047</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.34</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.31</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>54.61</strong></td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- TAB 3: CH 1 -->
+    <div id="tab-ch1" class="tab-content" style="display:none; overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg);">
+        <table class="data-table">
+            <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Emb</th><th style='white-space:nowrap;'>Norm1</th><th style='white-space:nowrap;'>Q_proj</th><th style='white-space:nowrap;'>K_proj</th><th style='white-space:nowrap;'>V_proj</th><th style='white-space:nowrap;'>RoPE</th><th style='white-space:nowrap;'>Attn</th><th style='white-space:nowrap;'>O_proj</th><th style='white-space:nowrap;'>Norm2</th><th style='white-space:nowrap;'>Gate+Up</th><th style='white-space:nowrap;'>Act*Mul</th><th style='white-space:nowrap;'>Down</th><th style='white-space:nowrap;'>NormEnd</th><th style='white-space:nowrap;'>LMHead</th><th style='white-space:nowrap;'>Sample</th><th style='white-space:nowrap;'>Total (ms)</th></tr></thead>
+            <tbody><tr><td><strong>#0</strong></td><td>0.004</td><td>0.37</td><td>0.62</td><td>0.26</td><td>0.25</td><td>0.39</td><td style='color:#ef4444;font-weight:700;'>0.48</td><td>0.64</td><td>0.35</td><td>4.74</td><td>0.08</td><td>2.21</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>831.74</strong></td></tr><tr><td><strong>#250</strong></td><td>0.01</td><td>0.63</td><td>0.90</td><td>0.23</td><td>0.23</td><td>0.65</td><td style='color:#ef4444;font-weight:700;'>2.36</td><td>0.86</td><td>0.58</td><td>7.15</td><td>0.32</td><td>3.19</td><td>0.04</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.03</td><td><strong style='color:#fff;'>62.28</strong></td></tr><tr><td><strong>#500</strong></td><td>0.03</td><td>1.12</td><td>1.71</td><td>0.50</td><td>0.51</td><td>1.25</td><td style='color:#ef4444;font-weight:700;'>15.42</td><td>1.70</td><td>1.15</td><td>10.44</td><td>1.01</td><td>5.32</td><td>0.07</td><td style='color:#c084fc;font-weight:700;'>2.09</td><td>0.04</td><td><strong style='color:#fff;'>56.99</strong></td></tr><tr><td><strong>#750</strong></td><td>0.04</td><td>1.43</td><td>1.74</td><td>0.51</td><td>0.51</td><td>1.58</td><td style='color:#ef4444;font-weight:700;'>46.36</td><td>1.79</td><td>1.41</td><td>13.81</td><td>2.10</td><td>7.36</td><td>0.09</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>86.60</strong></td></tr><tr><td><strong>#1000</strong></td><td>0.05</td><td>1.73</td><td>2.33</td><td>0.88</td><td>0.87</td><td>1.95</td><td style='color:#ef4444;font-weight:700;'>102.44</td><td>2.34</td><td>1.70</td><td>16.55</td><td>3.33</td><td>8.74</td><td>0.11</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.04</td><td><strong style='color:#fff;'>151.12</strong></td></tr><tr><td><strong>#1250</strong></td><td>0.06</td><td>2.21</td><td>3.37</td><td>1.00</td><td>0.95</td><td>2.40</td><td style='color:#ef4444;font-weight:700;'>152.16</td><td>3.40</td><td>2.24</td><td>23.58</td><td>4.93</td><td>12.06</td><td>0.14</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>216.28</strong></td></tr><tr><td><strong>#1500</strong></td><td>0.07</td><td>2.59</td><td>3.58</td><td>0.97</td><td>0.96</td><td>2.83</td><td style='color:#ef4444;font-weight:700;'>205.31</td><td>3.64</td><td>2.63</td><td>28.81</td><td>7.12</td><td>13.42</td><td>0.16</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>282.25</strong></td></tr><tr><td><strong>#1750</strong></td><td>0.07</td><td>2.94</td><td>4.16</td><td>1.12</td><td>1.08</td><td>3.25</td><td style='color:#ef4444;font-weight:700;'>259.20</td><td>4.21</td><td>3.07</td><td>30.95</td><td>8.15</td><td>15.55</td><td>0.19</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>343.40</strong></td></tr><tr><td><strong>#2000</strong></td><td>0.08</td><td>3.51</td><td>4.33</td><td>1.55</td><td>1.58</td><td>3.85</td><td style='color:#ef4444;font-weight:700;'>324.30</td><td>4.31</td><td>3.65</td><td>31.69</td><td>9.76</td><td>16.98</td><td>0.22</td><td style='color:#c084fc;font-weight:700;'>2.09</td><td>0.04</td><td><strong style='color:#fff;'>415.10</strong></td></tr><tr><td><strong>#2047</strong></td><td>0.09</td><td>3.37</td><td>4.45</td><td>1.50</td><td>1.53</td><td>3.79</td><td style='color:#ef4444;font-weight:700;'>312.92</td><td>4.35</td><td>3.71</td><td>33.58</td><td>10.63</td><td>17.65</td><td>0.22</td><td style='color:#c084fc;font-weight:700;'>2.10</td><td>0.04</td><td><strong style='color:#fff;'>407.06</strong></td></tr></tbody>
+        </table>
+    </div>
+    
+        </div>
+
+        <!-- SECTION C: HARDWARE EXECUTION & HOST DISPATCH DECOMPOSITION TABLE -->
+        <div class="section" id="section-physical-table">
+            <div class="section-title">⚡ Section C: Hardware Execution & Host Dispatch Decomposition Table</div>
+            <div class="section-desc">Head-to-head physical hardware decomposition comparing Without KV Cache Naive vs. With KV Cache KV Cache across Total Step Latency, Active GPU Execution Time, Host CPU Launch Gaps, and GPU Duty Cycle percentage.</div>
+            
+    <div style="overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg); margin-top: 1rem;">
+        <table class="data-table">
+            <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Total Step Latency</th><th style='white-space:nowrap;'>Active GPU Kernel Time</th><th style='white-space:nowrap;'>GPU Compute Speedup</th><th style='white-space:nowrap;'>Host CPU Launch Gaps (GPU Idle)</th><th style='white-space:nowrap;'>Active GPU Duty Cycle</th><th style='white-space:nowrap;'>Dominant Bottleneck Shift Regime</th></tr></thead>
+            <tbody>
+        <tr>
+            <td><strong>#0</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">831.7</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">87.37</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">12.6</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.96</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(14%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 1.1×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">819.2</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">75.41</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(86%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">2%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">13.7%</span>
+                </div>
+            </td>
+            <td><span style='color:#38bdf8;font-weight:600;'>Cold JIT / Prefill GEMM</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#250</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">62.3</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">58.51</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">19.5</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.30</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(19%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 1.7×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">42.8</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">47.21</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(81%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">31%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">19.3%</span>
+                </div>
+            </td>
+            <td><span style='color:#60a5fa;font-weight:600;'>Both Host CPU Bound (~19–31% Duty)</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#500</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">57.0</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">54.31</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">42.7</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.45</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 3.7×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">14.3</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">42.86</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">75%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.1%</span>
+                </div>
+            </td>
+            <td><span style='color:#f59e0b;font-weight:600;'>Without KV Saturation (75%) ➔ With KV Host Starved (21%)</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#750</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">86.6</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">58.56</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">81.4</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.52</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(20%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 7.1×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.2</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">47.04</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(80%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">94%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">19.7%</span>
+                </div>
+            </td>
+            <td><span style='color:#34d399;font-weight:600;'>7.1× GPU Speedup</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#1000</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">151.1</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">56.32</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">145.7</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.71</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 12.4×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.4</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">44.61</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">96%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.8%</span>
+                </div>
+            </td>
+            <td><span style='color:#10b981;font-weight:600;'>Without KV 96% Saturation ➔ With KV 12.4× GPU Speedup</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#1250</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">216.3</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">57.34</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">211.3</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.82</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 17.9×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">4.9</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">45.52</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">98%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.6%</span>
+                </div>
+            </td>
+            <td><span style='color:#34d399;font-weight:600;'>17.9× GPU Speedup</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#1500</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">282.2</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">56.43</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">275.1</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.96</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 23.0×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">7.2</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">44.47</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">97%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.2%</span>
+                </div>
+            </td>
+            <td><span style='color:#10b981;font-weight:600;'>Without KV 97% Saturation ➔ With KV 23.0× GPU Speedup</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#1750</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">343.4</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">55.42</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">337.0</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">12.00</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(22%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 28.1×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.4</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">43.42</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(78%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">98%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.6%</span>
+                </div>
+            </td>
+            <td><span style='color:#34d399;font-weight:600;'>28.1× GPU Speedup</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#2000</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">415.1</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">68.01</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">409.1</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">12.17</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(18%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 33.6×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.0</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">55.84</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(82%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">99%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">17.9%</span>
+                </div>
+            </td>
+            <td><span style='color:#10b981;font-weight:600;'>Without KV 98.6% Saturation ➔ With KV 33.6× GPU Speedup</span></td>
+        </tr>
+        
+        <tr>
+            <td><strong>#2047</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">407.1</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">54.61</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">401.2</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">12.28</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(22%)</span>
+                </div>
+            </td>
+            <td>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 32.7×</span>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.8</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">42.33</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(78%)</span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;white-space:nowrap;">
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">99%</span>
+                    <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">22.5%</span>
+                </div>
+            </td>
+            <td><span style='color:#10b981;font-weight:600;'>Without KV 98.6% Saturation ➔ With KV 32.7× GPU Speedup (Host Exposed)</span></td>
+        </tr>
+        </tbody>
+        </table>
+    </div>
+    
+        </div>
+
+        <!-- SECTION D: DUAL COMPARATIVE VISUAL CHARTS -->
+        <div class="section" id="section-dual-charts">
+            <div class="section-title">📈 Section D: Dual Comparative Visual Charts</div>
+            <div class="section-desc">Interactive SVG charts demonstrating the two fundamental systems transformations between Without KV Cache and With KV Cache: the elimination of quadratic latency explosion (Chart 1) and the active GPU duty cycle inversion from compute saturation to host dispatch starvation (Chart 2).</div>
+            
+    <div style="background:var(--card-bg); border:1px solid var(--card-border); border-radius:0.75rem; padding:1.25rem; margin-top:1rem; margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <div style="font-size:0.95rem; font-weight:700; color:#fff;">
+                📈 Chart 1: Step Latency Scaling Progression (O(N²) Naive Baseline vs. O(N) KV Cache)
+            </div>
+            <div style="display:flex; gap:1.25rem; font-size:0.78rem;">
+                <span style="display:flex; align-items:center; gap:0.4rem; color:#f87171; font-weight:600;">
+                    <span style="width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block;"></span> Without KV Cache Naive (O(N²))
+                </span>
+                <span style="display:flex; align-items:center; gap:0.4rem; color:#34d399; font-weight:600;">
+                    <span style="width:12px; height:12px; background:#10b981; border-radius:2px; display:inline-block;"></span> With KV Cache KV Cache (O(N))
+                </span>
+                <span style="display:flex; align-items:center; gap:0.4rem; color:#fbbf24; font-weight:600;">
+                    <span style="width:12px; height:12px; background:rgba(239,68,68,0.25); border:1px dashed #ef4444; border-radius:2px; display:inline-block;"></span> Eliminated Recomputation Waste
+                </span>
+            </div>
+        </div>
+        <svg viewBox="0 0 1200 360" class="chart-svg">
+            <defs>
+                <linearGradient id="gapGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ef4444" stop-opacity="0.30"/>
+                    <stop offset="100%" stop-color="#ef4444" stop-opacity="0.05"/>
+                </linearGradient>
+            </defs>
+            <line x1="70" y1="315.0" x2="1160" y2="315.0" class="grid-line" /><text x="60" y="319.0" text-anchor="end" fill="#94a3b8" font-size="11">0 ms</text><line x1="70" y1="253.88888888888889" x2="1160" y2="253.88888888888889" class="grid-line" /><text x="60" y="257.8888888888889" text-anchor="end" fill="#94a3b8" font-size="11">100 ms</text><line x1="70" y1="192.77777777777777" x2="1160" y2="192.77777777777777" class="grid-line" /><text x="60" y="196.77777777777777" text-anchor="end" fill="#94a3b8" font-size="11">200 ms</text><line x1="70" y1="131.66666666666669" x2="1160" y2="131.66666666666669" class="grid-line" /><text x="60" y="135.66666666666669" text-anchor="end" fill="#94a3b8" font-size="11">300 ms</text><line x1="70" y1="70.55555555555557" x2="1160" y2="70.55555555555557" class="grid-line" /><text x="60" y="74.55555555555557" text-anchor="end" fill="#94a3b8" font-size="11">400 ms</text>
+            <polygon points="70.0,-193.3 191.1,276.9 312.2,280.2 433.3,262.1 554.4,222.6 675.6,182.8 796.7,142.5 917.8,105.1 1038.9,61.3 1160.0,66.2 1160.0,281.6 1038.9,273.4 917.8,281.1 796.7,280.5 675.6,280.0 554.4,280.6 433.3,279.2 312.2,281.8 191.1,279.2 70.0,261.6" fill="url(#gapGrad)" />
+            <polyline points="70.0,-193.3 191.1,276.9 312.2,280.2 433.3,262.1 554.4,222.6 675.6,182.8 796.7,142.5 917.8,105.1 1038.9,61.3 1160.0,66.2" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,3" />
+            <polyline points="70.0,261.6 191.1,279.2 312.2,281.8 433.3,279.2 554.4,280.6 675.6,280.0 796.7,280.5 917.8,281.1 1038.9,273.4 1160.0,281.6" fill="none" stroke="#10b981" stroke-width="3" />
+            
+            <circle cx="70.0" cy="-193.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 Naive Full Recomputation', domain: 'Latency: 831.74 ms', step: 'Without KV: 831.74 ms vs With KV: 87.37 ms', dur_ms: 831.74, other: 'Speedup: 9.5×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="70.0" y="-203.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">831.7</text>
+        
+            <circle cx="191.1" cy="276.9" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 Naive Full Recomputation', domain: 'Latency: 62.28 ms', step: 'Without KV: 62.28 ms vs With KV: 58.51 ms', dur_ms: 62.28, other: 'Speedup: 1.1×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="191.1" y="266.9" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">62.3</text>
+        
+            <circle cx="312.2" cy="280.2" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 Naive Full Recomputation', domain: 'Latency: 56.99 ms', step: 'Without KV: 56.99 ms vs With KV: 54.31 ms', dur_ms: 56.99, other: 'Speedup: 1.0×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="312.2" y="270.2" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">57.0</text>
+        
+            <circle cx="433.3" cy="262.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 Naive Full Recomputation', domain: 'Latency: 86.60 ms', step: 'Without KV: 86.60 ms vs With KV: 58.56 ms', dur_ms: 86.6, other: 'Speedup: 1.5×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="433.3" y="252.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">86.6</text>
+        
+            <circle cx="554.4" cy="222.6" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 Naive Full Recomputation', domain: 'Latency: 151.12 ms', step: 'Without KV: 151.12 ms vs With KV: 56.32 ms', dur_ms: 151.12, other: 'Speedup: 2.7×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="554.4" y="212.6" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">151.1</text>
+        
+            <circle cx="675.6" cy="182.8" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 Naive Full Recomputation', domain: 'Latency: 216.28 ms', step: 'Without KV: 216.28 ms vs With KV: 57.34 ms', dur_ms: 216.28, other: 'Speedup: 3.8×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="675.6" y="172.8" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">216.3</text>
+        
+            <circle cx="796.7" cy="142.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 Naive Full Recomputation', domain: 'Latency: 282.25 ms', step: 'Without KV: 282.25 ms vs With KV: 56.43 ms', dur_ms: 282.25, other: 'Speedup: 5.0×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="796.7" y="132.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">282.2</text>
+        
+            <circle cx="917.8" cy="105.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 Naive Full Recomputation', domain: 'Latency: 343.40 ms', step: 'Without KV: 343.40 ms vs With KV: 55.42 ms', dur_ms: 343.4, other: 'Speedup: 6.2×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="917.8" y="95.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">343.4</text>
+        
+            <circle cx="1038.9" cy="61.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 Naive Full Recomputation', domain: 'Latency: 415.10 ms', step: 'Without KV: 415.10 ms vs With KV: 68.01 ms', dur_ms: 415.1, other: 'Speedup: 6.1×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1038.9" y="51.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">415.1</text>
+        
+            <circle cx="1160.0" cy="66.2" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 Naive Full Recomputation', domain: 'Latency: 407.06 ms', step: 'Without KV: 407.06 ms vs With KV: 54.61 ms', dur_ms: 407.06, other: 'Speedup: 7.5×'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1160.0" y="56.2" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">407.1</text>
+        
+            
+            <circle cx="70.0" cy="261.6" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 KV Cache', domain: 'Latency: 87.37 ms', step: 'With KV: 87.37 ms vs Without KV: 831.74 ms', dur_ms: 87.37, other: 'Speedup: 9.5× (Eliminated: 744.4 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="70.0" y="251.6" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">87.4</text>
+            <text x="70.0" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#0</text>
+        
+            <circle cx="191.1" cy="279.2" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 KV Cache', domain: 'Latency: 58.51 ms', step: 'With KV: 58.51 ms vs Without KV: 62.28 ms', dur_ms: 58.51, other: 'Speedup: 1.1× (Eliminated: 3.8 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="191.1" y="269.2" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.5</text>
+            <text x="191.1" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#250</text>
+        
+            <circle cx="312.2" cy="281.8" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 KV Cache', domain: 'Latency: 54.31 ms', step: 'With KV: 54.31 ms vs Without KV: 56.99 ms', dur_ms: 54.31, other: 'Speedup: 1.0× (Eliminated: 2.7 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="312.2" y="271.8" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">54.3</text>
+            <text x="312.2" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#500</text>
+        
+            <circle cx="433.3" cy="279.2" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 KV Cache', domain: 'Latency: 58.56 ms', step: 'With KV: 58.56 ms vs Without KV: 86.60 ms', dur_ms: 58.56, other: 'Speedup: 1.5× (Eliminated: 28.0 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="433.3" y="269.2" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.6</text>
+            <text x="433.3" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#750</text>
+        
+            <circle cx="554.4" cy="280.6" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 KV Cache', domain: 'Latency: 56.32 ms', step: 'With KV: 56.32 ms vs Without KV: 151.12 ms', dur_ms: 56.32, other: 'Speedup: 2.7× (Eliminated: 94.8 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="554.4" y="270.6" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">56.3</text>
+            <text x="554.4" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1000</text>
+        
+            <circle cx="675.6" cy="280.0" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 KV Cache', domain: 'Latency: 57.34 ms', step: 'With KV: 57.34 ms vs Without KV: 216.28 ms', dur_ms: 57.34, other: 'Speedup: 3.8× (Eliminated: 158.9 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="675.6" y="270.0" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">57.3</text>
+            <text x="675.6" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1250</text>
+        
+            <circle cx="796.7" cy="280.5" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 KV Cache', domain: 'Latency: 56.43 ms', step: 'With KV: 56.43 ms vs Without KV: 282.25 ms', dur_ms: 56.43, other: 'Speedup: 5.0× (Eliminated: 225.8 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="796.7" y="270.5" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">56.4</text>
+            <text x="796.7" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1500</text>
+        
+            <circle cx="917.8" cy="281.1" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 KV Cache', domain: 'Latency: 55.42 ms', step: 'With KV: 55.42 ms vs Without KV: 343.40 ms', dur_ms: 55.42, other: 'Speedup: 6.2× (Eliminated: 288.0 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="917.8" y="271.1" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">55.4</text>
+            <text x="917.8" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1750</text>
+        
+            <circle cx="1038.9" cy="273.4" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 KV Cache', domain: 'Latency: 68.01 ms', step: 'With KV: 68.01 ms vs Without KV: 415.10 ms', dur_ms: 68.01, other: 'Speedup: 6.1× (Eliminated: 347.1 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1038.9" y="263.4" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">68.0</text>
+            <text x="1038.9" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#2000</text>
+        
+            <circle cx="1160.0" cy="281.6" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 KV Cache', domain: 'Latency: 54.61 ms', step: 'With KV: 54.61 ms vs Without KV: 407.06 ms', dur_ms: 54.61, other: 'Speedup: 7.5× (Eliminated: 352.4 ms)'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1160.0" y="271.6" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">54.6</text>
+            <text x="1160.0" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#2047</text>
+        
+
+            <rect x="100" y="55" width="340" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#ef4444" stroke-width="1" />
+            <text x="110" y="74" fill="#f87171" font-weight="700" font-size="11">🔴 Without KV Cache Naive Quadratic Explosion</text>
+            <text x="110" y="90" fill="#94a3b8" font-size="10">Recomputing full history skyrockets to 415.1 ms at step 2000</text>
+
+            <rect x="780" y="245" width="360" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#10b981" stroke-width="1" />
+            <text x="790" y="264" fill="#34d399" font-weight="700" font-size="11">🟢 With KV Cache KV Cache Flat Execution</text>
+            <text x="790" y="280" fill="#94a3b8" font-size="10">O(1) Projections + O(t) Vector Attention: flat at ~54–68 ms</text>
+        </svg>
+    </div>
+    
+
+    <div style="background:var(--card-bg); border:1px solid var(--card-border); border-radius:0.75rem; padding:1.25rem; margin-top:1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <div style="font-size:0.95rem; font-weight:700; color:#fff;">
+                📊 Chart 2: Active GPU Duty Cycle Inversion (Compute Saturation ➔ Host Launch Starvation)
+            </div>
+            <div style="display:flex; gap:1.25rem; font-size:0.78rem;">
+                <span style="display:flex; align-items:center; gap:0.4rem; color:#f87171; font-weight:600;">
+                    <span style="width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block;"></span> Without KV Cache Duty Cycle (Pins at 98.6%)
+                </span>
+                <span style="display:flex; align-items:center; gap:0.4rem; color:#38bdf8; font-weight:600;">
+                    <span style="width:12px; height:12px; background:#38bdf8; border-radius:2px; display:inline-block;"></span> With KV Cache Duty Cycle (Flats at 18–22%)
+                </span>
+            </div>
+        </div>
+        <svg viewBox="0 0 1200 320" class="chart-svg">
+            <defs>
+                <linearGradient id="duty2Grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.30"/>
+                    <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+                </linearGradient>
+            </defs>
+            <line x1="70" y1="275.0" x2="1160" y2="275.0" class="grid-line" /><text x="60" y="279.0" text-anchor="end" fill="#94a3b8" font-size="11">0%</text><line x1="70" y1="228.0" x2="1160" y2="228.0" class="grid-line" /><text x="60" y="232.0" text-anchor="end" fill="#94a3b8" font-size="11">20%</text><line x1="70" y1="181.0" x2="1160" y2="181.0" class="grid-line" /><text x="60" y="185.0" text-anchor="end" fill="#94a3b8" font-size="11">40%</text><line x1="70" y1="134.0" x2="1160" y2="134.0" class="grid-line" /><text x="60" y="138.0" text-anchor="end" fill="#94a3b8" font-size="11">60%</text><line x1="70" y1="87.0" x2="1160" y2="87.0" class="grid-line" /><text x="60" y="91.0" text-anchor="end" fill="#94a3b8" font-size="11">80%</text><line x1="70" y1="40.0" x2="1160" y2="40.0" class="grid-line" /><text x="60" y="44.0" text-anchor="end" fill="#94a3b8" font-size="11">100%</text>
+            <polygon points="70,275 70.0,242.8 191.1,229.6 312.2,225.4 433.3,228.7 554.4,226.1 675.6,226.6 796.7,225.2 917.8,224.2 1038.9,232.9 1160.0,222.1 1160,275" fill="url(#duty2Grad)" />
+            <polyline points="70.0,271.5 191.1,201.4 312.2,99.0 433.3,54.1 554.4,48.5 675.6,45.4 796.7,46.1 917.8,44.5 1038.9,43.3 1160.0,43.3" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,3" />
+            <polyline points="70.0,242.8 191.1,229.6 312.2,225.4 433.3,228.7 554.4,226.1 675.6,226.6 796.7,225.2 917.8,224.2 1038.9,232.9 1160.0,222.1" fill="none" stroke="#38bdf8" stroke-width="3" />
+            
+            <circle cx="70.0" cy="271.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 Naive Duty Cycle', domain: 'Active GPU: 1.5%', step: 'Without KV GPU: 12.56 ms | Without KV CPU Gap: 819.18 ms', dur_ms: 12.56000000000006, other: 'With KV Duty: 13.7%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="70.0" y="261.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">1.5%</text>
+        
+            <circle cx="191.1" cy="201.4" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 Naive Duty Cycle', domain: 'Active GPU: 31.3%', step: 'Without KV GPU: 19.46 ms | Without KV CPU Gap: 42.82 ms', dur_ms: 19.46, other: 'With KV Duty: 19.3%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="191.1" y="191.4" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">31.3%</text>
+        
+            <circle cx="312.2" cy="99.0" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 Naive Duty Cycle', domain: 'Active GPU: 74.9%', step: 'Without KV GPU: 42.70 ms | Without KV CPU Gap: 14.29 ms', dur_ms: 42.7, other: 'With KV Duty: 21.1%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="312.2" y="89.0" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">74.9%</text>
+        
+            <circle cx="433.3" cy="54.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 Naive Duty Cycle', domain: 'Active GPU: 94.0%', step: 'Without KV GPU: 81.38 ms | Without KV CPU Gap: 5.22 ms', dur_ms: 81.38, other: 'With KV Duty: 19.7%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="433.3" y="44.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">94.0%</text>
+        
+            <circle cx="554.4" cy="48.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 Naive Duty Cycle', domain: 'Active GPU: 96.4%', step: 'Without KV GPU: 145.72 ms | Without KV CPU Gap: 5.40 ms', dur_ms: 145.72, other: 'With KV Duty: 20.8%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="554.4" y="38.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">96.4%</text>
+        
+            <circle cx="675.6" cy="45.4" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 Naive Duty Cycle', domain: 'Active GPU: 97.7%', step: 'Without KV GPU: 211.35 ms | Without KV CPU Gap: 4.93 ms', dur_ms: 211.35, other: 'With KV Duty: 20.6%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="675.6" y="35.4" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">97.7%</text>
+        
+            <circle cx="796.7" cy="46.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 Naive Duty Cycle', domain: 'Active GPU: 97.4%', step: 'Without KV GPU: 275.05 ms | Without KV CPU Gap: 7.20 ms', dur_ms: 275.05, other: 'With KV Duty: 21.2%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="796.7" y="36.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">97.4%</text>
+        
+            <circle cx="917.8" cy="44.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 Naive Duty Cycle', domain: 'Active GPU: 98.1%', step: 'Without KV GPU: 336.98 ms | Without KV CPU Gap: 6.42 ms', dur_ms: 336.97999999999996, other: 'With KV Duty: 21.6%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="917.8" y="34.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.1%</text>
+        
+            <circle cx="1038.9" cy="43.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 Naive Duty Cycle', domain: 'Active GPU: 98.6%', step: 'Without KV GPU: 409.09 ms | Without KV CPU Gap: 6.01 ms', dur_ms: 409.09000000000003, other: 'With KV Duty: 17.9%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1038.9" y="33.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.6%</text>
+        
+            <circle cx="1160.0" cy="43.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 Naive Duty Cycle', domain: 'Active GPU: 98.6%', step: 'Without KV GPU: 401.22 ms | Without KV CPU Gap: 5.84 ms', dur_ms: 401.22, other: 'With KV Duty: 22.5%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1160.0" y="33.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.6%</text>
+        
+            
+            <circle cx="70.0" cy="242.8" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 KV Cache Duty Cycle', domain: 'Active GPU: 13.7%', step: 'With KV GPU: 11.96 ms | With KV CPU Gap: 75.41 ms', dur_ms: 11.960000000000008, other: 'Without KV Duty: 1.5%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="70.0" y="232.8" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">13.7%</text>
+            <text x="70.0" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#0</text>
+        
+            <circle cx="191.1" cy="229.6" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 KV Cache Duty Cycle', domain: 'Active GPU: 19.3%', step: 'With KV GPU: 11.30 ms | With KV CPU Gap: 47.21 ms', dur_ms: 11.299999999999997, other: 'Without KV Duty: 31.3%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="191.1" y="219.6" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">19.3%</text>
+            <text x="191.1" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#250</text>
+        
+            <circle cx="312.2" cy="225.4" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 KV Cache Duty Cycle', domain: 'Active GPU: 21.1%', step: 'With KV GPU: 11.45 ms | With KV CPU Gap: 42.86 ms', dur_ms: 11.450000000000003, other: 'Without KV Duty: 74.9%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="312.2" y="215.4" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.1%</text>
+            <text x="312.2" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#500</text>
+        
+            <circle cx="433.3" cy="228.7" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 KV Cache Duty Cycle', domain: 'Active GPU: 19.7%', step: 'With KV GPU: 11.52 ms | With KV CPU Gap: 47.04 ms', dur_ms: 11.520000000000003, other: 'Without KV Duty: 94.0%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="433.3" y="218.7" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">19.7%</text>
+            <text x="433.3" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#750</text>
+        
+            <circle cx="554.4" cy="226.1" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 KV Cache Duty Cycle', domain: 'Active GPU: 20.8%', step: 'With KV GPU: 11.71 ms | With KV CPU Gap: 44.61 ms', dur_ms: 11.71, other: 'Without KV Duty: 96.4%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="554.4" y="216.1" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.8%</text>
+            <text x="554.4" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1000</text>
+        
+            <circle cx="675.6" cy="226.6" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 KV Cache Duty Cycle', domain: 'Active GPU: 20.6%', step: 'With KV GPU: 11.82 ms | With KV CPU Gap: 45.52 ms', dur_ms: 11.82, other: 'Without KV Duty: 97.7%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="675.6" y="216.6" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.6%</text>
+            <text x="675.6" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1250</text>
+        
+            <circle cx="796.7" cy="225.2" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 KV Cache Duty Cycle', domain: 'Active GPU: 21.2%', step: 'With KV GPU: 11.96 ms | With KV CPU Gap: 44.47 ms', dur_ms: 11.96, other: 'Without KV Duty: 97.4%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="796.7" y="215.2" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.2%</text>
+            <text x="796.7" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1500</text>
+        
+            <circle cx="917.8" cy="224.2" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 KV Cache Duty Cycle', domain: 'Active GPU: 21.6%', step: 'With KV GPU: 12.00 ms | With KV CPU Gap: 43.42 ms', dur_ms: 12.0, other: 'Without KV Duty: 98.1%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="917.8" y="214.2" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.6%</text>
+            <text x="917.8" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1750</text>
+        
+            <circle cx="1038.9" cy="232.9" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 KV Cache Duty Cycle', domain: 'Active GPU: 17.9%', step: 'With KV GPU: 12.17 ms | With KV CPU Gap: 55.84 ms', dur_ms: 12.170000000000002, other: 'Without KV Duty: 98.6%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1038.9" y="222.9" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">17.9%</text>
+            <text x="1038.9" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#2000</text>
+        
+            <circle cx="1160.0" cy="222.1" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 KV Cache Duty Cycle', domain: 'Active GPU: 22.5%', step: 'With KV GPU: 12.28 ms | With KV CPU Gap: 42.33 ms', dur_ms: 12.280000000000001, other: 'Without KV Duty: 98.6%'})"
+                onmouseleave="hideTooltip()" />
+            <text x="1160.0" y="212.1" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">22.5%</text>
+            <text x="1160.0" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#2047</text>
+        
+
+            <rect x="100" y="55" width="380" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#ef4444" stroke-width="1" />
+            <text x="110" y="74" fill="#f87171" font-weight="700" font-size="11">🔴 Without KV Cache Compute Saturation Regime</text>
+            <text x="110" y="90" fill="#94a3b8" font-size="10">GPU SMs pinned at 98.6% re-evaluating past quadratic tokens</text>
+
+            <rect x="760" y="205" width="380" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)" stroke="#38bdf8" stroke-width="1" />
+            <text x="770" y="224" fill="#38bdf8" font-weight="700" font-size="11">🔵 With KV Cache Host Launch Starvation Regime</text>
+            <text x="770" y="240" fill="#94a3b8" font-size="10">GPU finishes compute in 12 ms and starves ~43 ms on Python dispatch</text>
+        </svg>
+    </div>
+    
+        </div>
+
+        <!-- SECTION E: SYSTEMS & ARCHITECTURE GLOSSARY -->
+        <div class="section" id="section-glossary">
+            <div class="section-title">📖 Section E: Systems & Architecture Glossary</div>
+            <div class="section-desc">Clear definitions of physical hardware metrics, execution overheads, and architectural mechanisms profiled in this report, categorized by hardware metrics, KV-cache architecture, roofline mechanics, and production mitigations.</div>
+            
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:1.25rem;margin-top:1rem;">
+        
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">⚡ Active GPU Duty Cycle (%)</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(56,189,248,0.2);color:#38bdf8;border:1px solid rgba(56,189,248,0.4);font-weight:700;'>Core Hardware Metric</span><br><br>The percentage of wall-clock token generation time that the GPU execution units (Streaming Multiprocessors / SMs) were actively executing kernel instructions on silicon: <code>(Total Active Kernel Time / Total Wall-Clock Time) * 100</code>.<br><br><strong>Without KV Cache vs. With KV Cache Delta:</strong> In Without KV Cache, duty cycle climbed from 31% to <strong>98.6%</strong> as the GPU was drowned in quadratic recomputation. In With KV Cache, caching keys and values cut active execution to ~12 ms/tok, dropping duty cycle down to <strong>~18–22%</strong> and exposing the host CPU dispatch bottleneck.</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">⏱️ Host CPU Launch & Driver Gaps</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(96,165,250,0.2);color:#60a5fa;border:1px solid rgba(96,165,250,0.4);font-weight:700;'>Core Hardware Metric</span><br><br>The measured dead time where GPU silicon sits completely idle with an empty pipeline waiting for the host CPU Python thread to enqueue the next CUDA kernel into the stream queue.<br><br><strong>Root Cause:</strong> In unfused eager PyTorch, generating a single token requires ~732 individual kernel invocations. Because each micro-kernel finishes in ~5–15 µs while the host takes ~50 µs to execute Python bytecode and call <code>cudaLaunchKernel</code>, the GPU drains its work queue and starves for ~43 ms per token (69.3% of wall-clock time).</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">🔥 Active GPU Kernel Execution Time</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);font-weight:700;'>Core Hardware Metric</span><br><br>The true elapsed silicon time spent by GPU Streaming Multiprocessors executing forward-pass operations, measured via CUDA hardware event timers with microsecond resolution.<br><br><strong>Systems Impact:</strong> Active kernel execution dropped from <strong>330.41 s (Without KV)</strong> down to <strong>24.20 s (With KV)</strong> across 2,048 tokens—a massive <strong>13.7× / 16.4× compute reduction (-92.7%)</strong> achieved purely through algorithmic activation caching.</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">📦 In-Place Contiguous KV Cache (KV_Cache_Update)</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(234,179,8,0.2);color:#facc15;border:1px solid rgba(234,179,8,0.4);font-weight:700;'>KV-Cache Architecture</span><br><br>A pre-allocated contiguous GPU VRAM buffer <code>[B, n_kv_heads, max_seq_len, head_dim]</code> dedicated to storing past Key and Value activation vectors across all 16 Transformer layers.<br><br><strong>Performance Advantage:</strong> Rather than dynamically concatenating tensors with <code>torch.cat</code> (which triggers reallocation stalls and memory fragmentation), tiny_vllm performs in-place slice writes <code>k_cache[:, :, pos:pos+1, :] = k_new</code>, completing in just <strong>0.035 ms</strong> with zero dynamic memory overhead.</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">🔍 Grouped-Query Attention (GQA) 4:1 Compaction</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(168,85,247,0.2);color:#c084fc;border:1px solid rgba(168,85,247,0.4);font-weight:700;'>KV-Cache Architecture</span><br><br>LLaMA-3.2-1B groups 32 Query heads into 8 Key/Value heads (a 4:1 ratio). Each group of 4 query heads shares a single key and value head.<br><br><strong>Memory Savings:</strong> Instead of caching 32 heads (131.1 KB/tok across 16 layers), GQA stores only 8 unrepeated heads, reducing the KV cache memory footprint by <strong>75%</strong> to just <strong>16.38 KB/tok</strong> (or 32.77 KB in FP16/BF16). For 2,048 tokens, the entire cache consumes only <strong>33.55 MB</strong> in VRAM.</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">📐 Arithmetic Intensity & L4 Ridge Point (Roofline)</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);font-weight:700;'>Roofline Mechanics</span><br><br>Arithmetic intensity measures the ratio of floating-point operations performed per byte of data transferred from GPU VRAM: <code>FLOPs / Byte</code>.<br><br><strong>Memory-Bound Inversion:</strong> An NVIDIA L4 GPU delivers 120 TFLOPS of BF16 compute and 300 GB/s memory bandwidth, creating an operational ridge point of <strong>400 FLOP/byte</strong>. Single-token decode ($S=1$) reads 2.46 GB of weights to compute ~2.46 GFLOPs—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong>. Consequently, the GPU spends <strong>93.8%</strong> of its active time streaming weights rather than doing math.</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#38bdf8;margin-bottom:0.5rem;">🚀 CUDA Graph Replay & Kernel Fusion Mitigations</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;"><span class='tag-badge' style='background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);font-weight:700;'>Production Mitigations</span><br><br>Production serving engines (such as vLLM and TensorRT-LLM) employ two key architectural techniques to overcome the 69.3% host CPU dispatch gap exposed in With KV Cache:<br><br><strong>1. Kernel Fusion:</strong> Fuses RMSNorm, GEMM, SiLU, and addition kernels into unified CUDA kernels, reducing 732 launches to ~50.<br><strong>2. CUDA Graphs:</strong> Records the entire token decode forward pass into an immutable hardware execution graph. The CPU launches the entire sequence in a single ~10 µs ioctl, pushing GPU duty cycle from ~22% to <strong>95%+</strong> and accelerating decode to <strong>80+ tok/s</strong>.</div>
+        </div>
+    
+    </div>
+    
+        </div>
+
+        <!-- SECTION F: EXPECTED RESULTS & SYSTEMS INVARIANTS -->
+        <div class="section" id="section-expected-results">
+            <div class="section-title">🔬 Section F: Expected Results & Systems Invariants</div>
+            <div class="section-desc">The 5 physical and mathematical systems invariants governing stateful Key-Value cached inference on LLaMA-3.2-1B, verified against measured execution profiles.</div>
+            
+    
+    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 0.6rem; padding: 0.85rem 1.15rem; margin-top: 1rem; color: #a7f3d0; font-size: 0.86rem; line-height: 1.5;">
+        <strong>📌 With KV Cache Systems Invariants &amp; Architectural Checklist:</strong> Parameter counts, weight footprints, and cache dimensions are exact physical specifications of LLaMA-3.2-1B on NVIDIA L4 hardware. Unlike Without KV Cache's naive recomputation baseline, the findings below represent the mathematical and physical invariants governing stateful Key-Value cached inference.
+    </div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(400px, 1fr));gap:1.25rem;margin-top:1rem;">
+        
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#34d399;margin-bottom:0.5rem;">🔬 Invariant 1: Constant O(1) Projections & SwiGLU MLP Execution</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;">In Without KV Cache, linear projections processed the entire accumulated history ($S = t$ tokens), causing feed-forward layers to scale linearly with context length up to ~45 ms per step.<br><br>
+         With KV caching, newly generated tokens are evaluated strictly one at a time ($S = 1$). Projections perform single-vector matrix multiplications (GEMV) rather than large matrix-matrix multiplies (GEMM):
+         <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
+             <li><strong>W_q Projection:</strong> Strictly flat at <strong>~0.58 ms</strong> from step 0 to step 2047 (~8.39 MB weights per layer).</li>
+             <li><strong>W_k & W_v Projections:</strong> Strictly flat at <strong>~0.16 ms</strong> each (~2.10 MB weights per layer, 4:1 GQA ratio).</li>
+             <li><strong>SwiGLU Gate+Up:</strong> Strictly flat at <strong>~4.31–4.34 ms</strong> across 2,048 tokens (~67.11 MB weights per layer).</li>
+             <li><strong>SwiGLU Down:</strong> Strictly flat at <strong>~2.10 ms</strong> across 2,048 tokens (~33.55 MB weights per layer).</li>
+         </ul>
+         <strong>Empirical Invariant:</strong> KV caching decouples linear projection latency from context length: projection times at token #2000 are identical to token #1!</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#34d399;margin-bottom:0.5rem;">⚡ Invariant 2: Linear O(t) Attention Scaling via Vector-Matrix GEMV</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;">In Without KV Cache, full causal self-attention recalculated quadratic $O(t^2)$ matrix multiplications across all $t$ historical tokens, exploding from ~0.48 ms to 312.92 ms.<br><br>
+         With KV caching, attention computes a single query vector ($1 	imes D$) dot product against cached key vectors ($t 	imes D$), and multiplies the resulting attention distribution ($1 	imes t$) with cached values ($t 	imes D$):
+         <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
+             <li><strong>Step #250:</strong> Attention compute takes <strong>0.38 ms</strong> (vs 2.36 ms in Without KV ➔ <strong>6.2× faster</strong>).</li>
+             <li><strong>Step #1000:</strong> Attention compute takes <strong>0.77 ms</strong> (vs 102.44 ms in Without KV ➔ <strong>133.0× faster</strong>).</li>
+             <li><strong>Step #2047:</strong> Attention compute takes <strong>1.34 ms</strong> (vs 312.92 ms in Without KV ➔ <strong>233.5× faster!</strong>).</li>
+         </ul>
+         <strong>Empirical Invariant:</strong> Attention latency scales strictly linearly with context length $O(t)$, reducing attention compute time at token #2047 by an astonishing <strong>99.6%</strong>!</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#34d399;margin-bottom:0.5rem;">📦 Invariant 3: GQA 75% Memory & Bandwidth Footprint Reduction</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;">LLaMA-3.2-1B incorporates Grouped-Query Attention (GQA) with 32 Query heads and 8 Key/Value heads across 16 layers (head dimension $D=64$):
+         <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
+             <li><strong>Per-Token Cache Size:</strong> $2\text{ (K+V)} \times 8\text{ heads} \times 64\text{ dim} \times 2\text{ bytes (BF16)} = 2,048\text{ bytes}$ per layer = <strong>32.77 KB per token</strong> across 16 layers.</li>
+             <li><strong>Total VRAM Buffer:</strong> At 2,048 tokens, the entire KV cache consumes only <strong>33.55 MB</strong> of VRAM.</li>
+             <li><strong>Footprint Reduction:</strong> Traditional Multi-Head Attention (32 KV heads) would require <strong>134.2 MB</strong>. GQA achieves a <strong>75% reduction</strong> in cache capacity and streaming bandwidth.</li>
+         </ul>
+         <strong>Empirical Invariant:</strong> The entire 2,048-token KV cache fits easily in GPU VRAM with negligible memory pressure, leaving >98% of VRAM available for model weights and activation buffers.</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#34d399;margin-bottom:0.5rem;">🚀 Invariant 4: Zero-Stall In-Place Slice Insertion (KV_Cache_Update)</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;">Naive KV cache implementations append newly generated keys and values using dynamic concatenation (e.g. <code>torch.cat([past, new], dim=2)</code>). This forces the CUDA caching allocator to allocate a new memory block, copy old entries, and free previous buffers at every decode step.<br><br>
+         tiny_vllm implements in-place slice insertion into pre-allocated contiguous buffers:
+         <div style="margin:0.5rem 0;padding:0.6rem;background:rgba(15,23,42,0.8);border-left:3px solid #38bdf8;font-family:monospace;font-size:0.85rem;">
+             self.k_cache[:, :, start_pos:start_pos+1, :] = k_new<br>
+             self.v_cache[:, :, start_pos:start_pos+1, :] = v_new
+         </div>
+         <strong>Empirical Invariant:</strong> The measured latency of <code>KV_Cache_Update</code> across all 2,048 tokens is consistently <strong>~0.035 ms</strong> (&lt;0.3% of step time), with <strong>0 ms dynamic memory reallocation</strong> and zero memory fragmentation!</div>
+        </div>
+    
+        <div class="kpi-card" style="padding:1.25rem;">
+            <div style="font-weight:700;font-size:1.05rem;color:#34d399;margin-bottom:0.5rem;">🔄 Invariant 5: The Dual Bottleneck Inversion (Macro & Micro Tiers)</div>
+            <div style="color:#cbd5e1;font-size:0.88rem;line-height:1.6;">Eliminating redundant quadratic compute triggers a profound dual inversion across hardware abstraction tiers:
+         <ul style="margin: 0.5rem 0 0.5rem 1.25rem; line-height: 1.6;">
+             <li><strong>Tier 1: Macro Wall-Clock Inversion (GPU ➔ Host-Bound):</strong><br>
+                 In Without KV Cache, wall-clock time was <strong>93.7% GPU-bound</strong> (330.4s GPU vs 22.2s CPU gaps). In With KV Cache, active GPU time dropped to <strong>24.2s</strong>. Because GPU micro-kernels complete in ~5–15 µs, the GPU empties its queue and waits on the host Python interpreter for <strong>54.65s (69.3% idle gaps)</strong>. The system has shifted from GPU-bound to host CPU launch-bound.</li>
+             <li><strong>Tier 2: Micro Silicon Inversion (Compute ➔ Memory-Bound):</strong><br>
+                 In Without KV Cache, inside active GPU kernels, <strong>93.1%</strong> of time was spent on Tensor Core arithmetic (307.7s compute vs 22.7s memory). In With KV Cache, single-token decode ($S=1$) requires streaming 2.46 GB of weights for only 1 vector dot product—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution is now <strong>93.8% memory-bandwidth bound</strong> (22.7s memory streaming vs 1.5s compute).</li>
+         </ul>
+         <strong>Production Takeaway:</strong> In real-world inference engines (e.g. vLLM), <em>Kernel Fusion</em> reduces kernel count from 732 to ~50, and <em>CUDA Graphs</em> replays the entire forward pass in one ~10 µs dispatch—eliminating the 69.3% host CPU gap and driving decode throughput to <strong>80+ tok/s</strong>.</div>
+        </div>
+    
+    </div>
+    
+        </div>
+
+    </div>
+
+    <script>
+        const tooltip = document.getElementById("tooltip");
+        function showTooltip(e, ev) {
+            tooltip.innerHTML = `
+                <div class="tooltip-title">${ev.name || ''}</div>
+                <div class="tooltip-row"><span class="tooltip-label">Domain:</span><span style="font-weight:700;color:#fff;">${ev.domain || ''}</span></div>
+                <div class="tooltip-row"><span class="tooltip-label">Context:</span><span>${ev.step || ''}</span></div>
+                <div class="tooltip-row"><span class="tooltip-label">Duration:</span><span style="color:#38bdf8;font-weight:700;">${((ev.dur_ms || 0)).toFixed(2)} ms</span></div>
+                ${ev.other ? `<div class="tooltip-row"><span class="tooltip-label">Info:</span><span style="color:#10b981;">${ev.other}</span></div>` : ''}
+            `;
+            tooltip.style.display = "block";
+            tooltip.style.left = (e.clientX + 15) + "px";
+            tooltip.style.top = (e.clientY + 15) + "px";
+        }
+        function hideTooltip() { tooltip.style.display = "none"; }
+
+        function switchTableTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(function(el) {
+                el.style.display = 'none';
+            });
+            document.querySelectorAll('.tab-btn').forEach(function(btn) {
+                btn.classList.remove('active');
+            });
+            const target = document.getElementById(tabId);
+            if (target) target.style.display = 'block';
+            const btn = document.getElementById('btn-' + tabId);
+            if (btn) btn.classList.add('active');
+        }
+    </script>
+</body>
+</html>
