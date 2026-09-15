@@ -34,6 +34,9 @@ import torch.nn.functional as F
 import safetensors.torch
 from transformers import AutoTokenizer
 
+import sys
+import os
+
 try:
     from profile_visualizer import (
         extract_single_token_metric,
@@ -42,6 +45,7 @@ try:
         save_json_metrics,
     )
 except ImportError:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from chapter_2_kvcache.profile_visualizer import (
         extract_single_token_metric,
         extract_timeline_from_trace,
