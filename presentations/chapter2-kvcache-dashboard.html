@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KV-Cache Profiler</title>
+<style>
+  :root {
+    --bg:#0a0e17; --panel:#111725; --panel-2:#0d1320; --border:#1e2636; --border-soft:#171f2e;
+    --text:#e8edf5; --muted:#8895ac; --faint:#5b6678;
+    --base:#f2789a; --base-soft:rgba(242,120,154,0.14);
+    --kv:#4dd6c1; --kv-soft:rgba(77,214,193,0.14);
+    --blue:#6aa8ff; --amber:#f5c451; --purple:#b088ff;
+    --radius:14px; --shadow:0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 30px -18px rgba(0,0,0,0.9);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,rgba(77,214,193,0.06),transparent 60%),
+    radial-gradient(1000px 500px at 0% 0%,rgba(242,120,154,0.05),transparent 55%),var(--bg);
+    color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;padding:0 16px 80px}
+  .wrap{max-width:1180px;margin:0 auto}
+  .mono{font-family:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+  .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
+    gap:16px;padding:14px 0;margin-bottom:8px;background:linear-gradient(var(--bg),rgba(10,14,23,0.7) 70%,transparent);backdrop-filter:blur(8px)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-0.01em}
+  .brand .dot{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--kv),var(--blue));color:#06131a;font-size:15px}
+  .brand small{color:var(--faint);font-weight:500;font-size:12px;margin-left:2px}
+  .toggle{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:3px}
+  .toggle button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;font-weight:600;
+    padding:6px 12px;border-radius:7px;cursor:pointer;transition:.15s}
+  .toggle button.on{background:var(--border);color:var(--text)}
+  .hero{display:grid;grid-template-columns:1.15fr 1fr;gap:22px;background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--border);border-radius:20px;padding:26px 28px;box-shadow:var(--shadow);margin-bottom:20px;overflow:hidden}
+  .hero h1{font-size:26px;letter-spacing:-0.02em;line-height:1.15;margin-bottom:10px}
+  .hero h1 .hl{color:var(--kv)}
+  .hero p{color:var(--muted);font-size:14px;max-width:46ch}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+  .chip b{color:var(--text);font-weight:700}
+  .headline{display:flex;flex-direction:column;justify-content:center;align-items:center;background:var(--panel-2);
+    border:1px solid var(--border);border-radius:16px;padding:20px;text-align:center}
+  .headline .big{font-size:58px;font-weight:800;letter-spacing:-0.04em;line-height:1;
+    background:linear-gradient(135deg,var(--kv),var(--blue));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .headline .big span{font-size:26px}
+  .headline .cap{color:var(--muted);font-size:13px;margin-top:8px}
+  .headline .split{display:flex;gap:22px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft)}
+  .headline .split .n{font-size:18px;font-weight:700}
+  .headline .split .n.base{color:var(--base)} .headline .split .n.kv{color:var(--kv)}
+  .headline .split .l{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:26px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::after{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--edge,var(--kv));opacity:.8}
+  .kpi .k-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600}
+  .kpi .k-row{display:flex;align-items:baseline;gap:8px;margin-top:12px}
+  .kpi .k-from{font-size:15px;color:var(--faint);text-decoration:line-through;text-decoration-color:rgba(242,120,154,0.5)}
+  .kpi .k-to{font-size:26px;font-weight:800;letter-spacing:-0.02em}
+  .kpi .k-delta{margin-top:10px;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .k-delta.good{background:var(--kv-soft);color:var(--kv)} .k-delta.warn{background:rgba(245,196,81,0.14);color:var(--amber)}
+  .kpi .k-note{font-size:11.5px;color:var(--faint);margin-top:10px}
+  section{margin-bottom:26px}
+  .s-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .s-head h2{font-size:17px;letter-spacing:-0.01em} .s-head p{font-size:13px;color:var(--muted);margin-top:3px;max-width:64ch}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .legend{display:flex;gap:18px;margin-bottom:6px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted)}
+  .legend i{width:22px;height:3px;border-radius:2px;display:inline-block}
+  .legend i.base{background:var(--base)} .legend i.kv{background:var(--kv)}
+  .chart text{fill:var(--muted);font-size:11px;font-family:"SF Mono",ui-monospace,monospace}
+  .chart .grid-l{stroke:var(--border-soft);stroke-dasharray:3 5}
+  .chart .axis-title{fill:var(--faint);font-size:10.5px}
+  .insight{display:flex;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:var(--panel-2)}
+  .insight+.insight{margin-top:12px}
+  .insight .ic{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px}
+  .insight h4{font-size:13.5px;margin-bottom:3px} .insight p{font-size:12.5px;color:var(--muted)} .insight b{color:var(--text)}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{border:1px solid var(--border);background:var(--panel-2);color:var(--muted);font:inherit;font-size:12.5px;
+    font-weight:600;padding:7px 13px;border-radius:9px;cursor:pointer;transition:.15s}
+  .tabs button.on{background:var(--border);color:var(--text);border-color:#2b3548}
+  .t-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:9px 12px;text-align:right;white-space:nowrap}
+  th{background:var(--panel-2);color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;position:sticky;top:0}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-top:1px solid var(--border-soft)}
+  tbody tr:hover{background:rgba(106,168,255,0.05)}
+  td .from{color:var(--faint)} td .arrow{color:var(--faint);margin:0 5px} td .to{color:var(--text);font-weight:700}
+  .pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .pill.good{background:var(--kv-soft);color:var(--kv)} .pill.big{background:rgba(176,136,255,0.16);color:var(--purple)}
+  .bar{display:inline-block;height:7px;border-radius:4px;vertical-align:middle;background:var(--kv)}
+  .cell-hot{color:var(--base);font-weight:700} .cell-kv{color:var(--kv);font-weight:700}
+  .foot{text-align:center;color:var(--faint);font-size:12px;margin-top:30px}
+  @media(max-width:880px){.hero{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}}
+  @media(max-width:520px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><span class="dot">⚡</span> tiny_vllm <small>· KV-Cache profiler · chapter 2</small></div>
+    <div class="toggle">
+      <button class="on" data-view="overview" onclick="scrollTo(0,0)">Overview</button>
+      <button data-view="perstep" onclick="document.getElementById('perstep').scrollIntoView()">Per-step</button>
+      <button data-view="hw" onclick="document.getElementById('hw').scrollIntoView()">Hardware</button>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div>
+      <h1>KV cache turns a quadratic decode into a <span class="hl">flat, memory-bound</span> one.</h1>
+      <p>LLaMA-3.2-1B generating 2,048 tokens on an NVIDIA L4 — naive full-sequence recomputation vs. cached key/value states, profiled across 10 checkpoints.</p>
+      <div class="chips">
+        <span class="chip">16 layers · GQA 32:8:8</span>
+        <span class="chip">Intermediate <b>8192</b></span>
+        <span class="chip">2,048 tokens</span>
+        <span class="chip">10 checkpoints</span>
+      </div>
+    </div>
+    <div class="headline">
+      <div class="big">4.4<span>×</span></div>
+      <div class="cap">wall-clock speedup · <b style="color:var(--text)">352.6 s → 80.8 s</b></div>
+      <div class="split">
+        <div><div class="n base mono">5.8</div><div class="l">tok/s naive</div></div>
+        <div><div class="n kv mono">25.4</div><div class="l">tok/s cached</div></div>
+        <div><div class="n mono" style="color:var(--blue)">13.7×</div><div class="l">less compute</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" id="kpis"></div>
+
+  <section>
+    <div class="s-head"><div>
+      <h2>Attention latency per step</h2>
+      <p>The whole story in one line. Without a cache, attention recomputes the full history every step and grows quadratically. With a cache it stays flat.</p>
+    </div></div>
+    <div class="card">
+      <div class="legend">
+        <span><i class="base"></i> Without KV cache <b style="color:var(--base);margin-left:2px">(O·N²)</b></span>
+        <span><i class="kv"></i> With KV cache <b style="color:var(--kv);margin-left:2px">(flat)</b></span>
+      </div>
+      <svg id="attn-chart" class="chart" viewBox="0 0 900 340" width="100%" role="img" aria-label="Attention latency per step"></svg>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="card">
+      <div class="s-head" style="margin-bottom:12px"><div><h2>Where the time goes</h2><p>Same 5 buckets, both runs, shared scale.</p></div></div>
+      <div class="legend"><span><i class="base"></i> Without KV</span><span><i class="kv"></i> With KV</span></div>
+      <svg id="alloc-chart" class="chart" viewBox="0 0 480 300" width="100%" role="img" aria-label="Time allocation"></svg>
+    </div>
+    <div class="card">
+      <div class="s-head" style="margin-bottom:12px"><div><h2>The two bottleneck shifts</h2><p>KV cache doesn't just speed things up — it moves the constraint twice.</p></div></div>
+      <div class="insight"><div class="ic" style="background:var(--kv-soft);color:var(--kv)">①</div><div>
+        <h4>Wall clock: GPU-bound → host-bound</h4>
+        <p>Micro-kernels finish in 5–15 µs, so the GPU sits idle ~45 ms/tok waiting on the Python interpreter to enqueue work. <b>56.6 s (70%)</b> of decode is now CPU dispatch dead time.</p></div></div>
+      <div class="insight"><div class="ic" style="background:rgba(176,136,255,0.16);color:var(--purple)">②</div><div>
+        <h4>Inside the GPU: compute-bound → memory-bound</h4>
+        <p>Single-token decode reads <b>2.46 GB</b> of weights for one vector multiply — arithmetic intensity <b>1.04 FLOP/byte</b> vs. the L4's 400 ridge point. Execution flips to <b>93.8% memory-bandwidth bound</b>.</p></div></div>
+      <div class="insight"><div class="ic" style="background:rgba(245,196,81,0.16);color:var(--amber)">→</div><div>
+        <h4>What production does next</h4>
+        <p>Kernel fusion (732 → ~50 launches) and CUDA graphs replay the forward pass in one host call, cutting decode to ~12 ms/tok and <b>80+ tok/s</b>.</p></div></div>
+    </div>
+  </section>
+
+  <section id="perstep">
+    <div class="s-head"><div>
+      <h2>Per-step operation breakdown</h2>
+      <p>Every sampled checkpoint, all operations in milliseconds. Switch between the comparative delta, the cached run, and the naive baseline.</p>
+    </div></div>
+    <div class="tabs">
+      <button class="on" data-tab="delta" onclick="showTab('delta')">Δ Comparative</button>
+      <button data-tab="kv" onclick="showTab('kv')">With KV cache</button>
+      <button data-tab="base" onclick="showTab('base')">Without KV cache</button>
+    </div>
+    <div class="t-wrap"><table id="perstep-table" class="mono"></table></div>
+  </section>
+
+  <section id="hw">
+    <div class="s-head"><div>
+      <h2>Per-checkpoint hardware decomposition</h2>
+      <p>Total latency, active GPU time, host launch gaps, and GPU duty cycle. Baseline → cached at each sampled step.</p>
+    </div></div>
+    <div class="t-wrap"><table id="hw-table" class="mono"></table></div>
+  </section>
+
+  <div class="foot">profile_dashboard_v2.html · redesigned view · generated by build_redesigned_dashboard.py from chapter-2 rerun data</div>
+</div>
+
+<script>
+const DATA = {"steps": [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2047], "attn_base": [0.48, 2.27, 15.37, 46.15, 102.48, 150.39, 204.29, 260.22, 324.67, 312.96], "attn_kv": [0.41, 0.38, 0.52, 0.6, 0.76, 0.87, 1.02, 1.07, 1.23, 1.33], "total_base": [62.37, 59.99, 57.98, 84.57, 150.55, 213.62, 281.16, 345.22, 416.27, 407.78], "total_kv": [69.52, 60.59, 65.95, 57.5, 57.16, 58.64, 58.28, 58.82, 57.54, 58.49], "ch2_cols": ["Emb", "Norm1", "Q", "K", "V", "RoPE", "KVw", "Attn", "O", "Norm2", "Gate+Up", "Act\u00b7Mul", "Down", "NormEnd", "LMHead", "Sample"], "ch1_cols": ["Emb", "Norm1", "Q", "K", "V", "RoPE", "Attn", "O", "Norm2", "Gate+Up", "Act\u00b7Mul", "Down", "NormEnd", "LMHead", "Sample"], "ch2": [["#0", 0.008, 0.34, 0.59, 0.21, 0.21, 0.36, 0.04, 0.41, 0.62, 0.32, 4.51, 0.05, 2.19, 0.02, 2.07, 0.03, 69.52], ["#250", 0.002, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 0.38, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 60.59], ["#500", 0.002, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 0.52, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 65.95], ["#750", 0.002, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 0.6, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 57.5], ["#1000", 0.003, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 0.76, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 57.16], ["#1250", 0.003, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 0.87, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 58.64], ["#1500", 0.003, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 1.02, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 58.28], ["#1750", 0.003, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 1.07, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 58.82], ["#2000", 0.003, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 1.23, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 57.54], ["#2047", 0.003, 0.27, 0.58, 0.16, 0.16, 0.31, 0.04, 1.33, 0.58, 0.27, 4.3, 0.04, 2.09, 0.02, 2.07, 0.03, 58.49]], "ch1": [["#0", 0.004, 0.37, 0.63, 0.25, 0.26, 0.39, 0.48, 0.64, 0.35, 4.73, 0.08, 2.2, 0.02, 2.07, 0.03, 62.37], ["#250", 0.01, 0.62, 0.89, 0.23, 0.23, 0.63, 2.27, 0.87, 0.56, 7.15, 0.32, 3.22, 0.04, 2.09, 0.03, 59.99], ["#500", 0.03, 1.11, 1.71, 0.49, 0.51, 1.23, 15.37, 1.71, 1.15, 10.43, 1.01, 5.35, 0.06, 2.08, 0.04, 57.98], ["#750", 0.04, 1.37, 1.67, 0.49, 0.5, 1.53, 46.15, 1.72, 1.35, 13.25, 2.11, 7.17, 0.09, 2.08, 0.04, 84.57], ["#1000", 0.04, 1.73, 2.33, 0.88, 0.87, 1.94, 102.48, 2.34, 1.69, 16.55, 3.34, 8.74, 0.11, 2.08, 0.04, 150.55], ["#1250", 0.06, 2.13, 3.26, 0.96, 0.92, 2.33, 150.39, 3.29, 2.17, 23.09, 4.91, 11.82, 0.13, 2.08, 0.04, 213.62], ["#1500", 0.07, 2.58, 3.58, 0.97, 0.96, 2.82, 204.29, 3.61, 2.61, 28.67, 7.13, 13.4, 0.16, 2.08, 0.04, 281.16], ["#1750", 0.07, 2.97, 4.22, 1.14, 1.1, 3.29, 260.22, 4.27, 3.1, 31.48, 8.15, 15.74, 0.19, 2.08, 0.04, 345.22], ["#2000", 0.08, 3.5, 4.32, 1.56, 1.58, 3.87, 324.67, 4.33, 3.67, 31.75, 9.83, 17.04, 0.23, 2.09, 0.05, 416.27], ["#2047", 0.08, 3.37, 4.48, 1.51, 1.53, 3.79, 312.96, 4.38, 3.72, 33.72, 10.62, 17.76, 0.22, 2.1, 0.04, 407.78]], "hw": [{"step": "#0", "lat": [62.4, 69.52], "gpu": [12.6, 11.98], "spd": "1.0\u00d7", "gap": [49.8, 57.54], "duty_base": "20%", "duty_kv": "17.2%", "regime": "Cold JIT / Prefill GEMM"}, {"step": "#250", "lat": [60.0, 60.59], "gpu": [19.4, 11.29], "spd": "1.7\u00d7", "gap": [40.6, 49.3], "duty_base": "32%", "duty_kv": "18.6%", "regime": "Both Host CPU Bound (~19\u201331% Duty)"}, {"step": "#500", "lat": [58.0, 65.95], "gpu": [42.7, 11.44], "spd": "3.7\u00d7", "gap": [15.3, 54.51], "duty_base": "74%", "duty_kv": "17.3%", "regime": "Without KV Saturation (75%) \u2794 With KV Host Starved (21%)"}, {"step": "#750", "lat": [84.6, 57.5], "gpu": [80.1, 11.53], "spd": "6.9\u00d7", "gap": [4.5, 45.97], "duty_base": "95%", "duty_kv": "20.0%", "regime": "6.9\u00d7 GPU Speedup"}, {"step": "#1000", "lat": [150.6, 57.16], "gpu": [145.7, 11.69], "spd": "12.5\u00d7", "gap": [4.8, 45.47], "duty_base": "97%", "duty_kv": "20.5%", "regime": "Without KV 96% Saturation \u2794 With KV 12.4\u00d7 GPU Speedup"}, {"step": "#1250", "lat": [213.6, 58.64], "gpu": [208.3, 11.8], "spd": "17.7\u00d7", "gap": [5.3, 46.84], "duty_base": "98%", "duty_kv": "20.1%", "regime": "17.7\u00d7 GPU Speedup"}, {"step": "#1500", "lat": [281.2, 58.28], "gpu": [273.8, 11.95], "spd": "22.9\u00d7", "gap": [7.4, 46.33], "duty_base": "97%", "duty_kv": "20.5%", "regime": "Without KV 97% Saturation \u2794 With KV 23.0\u00d7 GPU Speedup"}, {"step": "#1750", "lat": [345.2, 58.82], "gpu": [339.0, 11.99], "spd": "28.3\u00d7", "gap": [6.2, 46.83], "duty_base": "98%", "duty_kv": "20.4%", "regime": "28.3\u00d7 GPU Speedup"}, {"step": "#2000", "lat": [416.3, 57.54], "gpu": [409.7, 12.17], "spd": "33.7\u00d7", "gap": [6.5, 45.37], "duty_base": "98%", "duty_kv": "21.1%", "regime": "Without KV 98.6% Saturation \u2794 With KV 33.6\u00d7 GPU Speedup"}, {"step": "#2047", "lat": [407.8, 58.49], "gpu": [401.6, 12.26], "spd": "32.8\u00d7", "gap": [6.2, 46.23], "duty_base": "98%", "duty_kv": "21.0%", "regime": "Without KV 98.6% Saturation \u2794 With KV 32.7\u00d7 GPU Speedup (Host Exposed)"}]};
+const KPIS = [{"label": "End-to-end time", "from": "352.6s", "to": "80.8s", "edge": "--kv", "tone": "good", "delta": "\u25bc 4.4\u00d7 faster", "note": "Total wall clock for 2,048 tokens"}, {"label": "Active GPU kernel time", "from": "330.4s", "to": "24.2s", "edge": "--kv", "tone": "good", "delta": "\u25bc 13.7\u00d7 less", "note": "No more O(N\u00b2) recomputation"}, {"label": "Host CPU launch gaps", "from": "22.1s", "to": "56.6s", "edge": "--amber", "tone": "warn", "delta": "\u25b2 new bottleneck", "note": "70% of decode is now dispatch idle"}, {"label": "GPU tensor compute", "from": "307.7s", "to": "1.5s", "edge": "--purple", "tone": "good", "delta": "\u25bc 207\u00d7 less math", "note": "Decode collapses to a GEMV"}];
+
+/* ---------- KPI cards ---------- */
+document.getElementById('kpis').innerHTML = KPIS.map(k => `
+  <div class="kpi" style="--edge:var(${k.edge})">
+    <div class="k-label">${k.label}</div>
+    <div class="k-row"><span class="k-from mono">${k.from}</span><span class="k-to mono" style="color:var(${k.edge})">${k.to}</span></div>
+    <span class="k-delta ${k.tone}">${k.delta}</span>
+    <div class="k-note">${k.note}</div>
+  </div>`).join('');
+
+/* ---------- attention line chart ---------- */
+(function(){
+  const steps=DATA.steps, base=DATA.attn_base, kv=DATA.attn_kv;
+  const X0=60,X1=870,Y0=290,Y1=20, maxStep=steps[steps.length-1];
+  const ymax=Math.ceil(Math.max(...base)/40)*40 + 20; // headroom
+  const sx=s=>X0+(s/maxStep)*(X1-X0);
+  const sy=v=>Y0-(v/ymax)*(Y0-Y1);
+  let g='';
+  // y gridlines
+  for(let i=0;i<=4;i++){const v=ymax*i/4,y=sy(v);
+    g+=`<line class="grid-l" x1="${X0}" y1="${y.toFixed(1)}" x2="${X1}" y2="${y.toFixed(1)}"/>`;
+    g+=`<text x="52" y="${(y+4).toFixed(1)}" text-anchor="end">${i===4?Math.round(v)+' ms':Math.round(v)}</text>`;}
+  // x labels
+  [0,500,1000,1500,maxStep].forEach(s=>{g+=`<text x="${sx(s).toFixed(0)}" y="308" text-anchor="middle">${s}</text>`;});
+  g+=`<text x="465" y="330" text-anchor="middle" class="axis-title">decode step (token position)</text>`;
+  const path=arr=>arr.map((v,i)=>`${i?'L':'M'}${sx(steps[i]).toFixed(1)},${sy(v).toFixed(1)}`).join(' ');
+  const area=path(base)+` L${sx(maxStep).toFixed(1)},${Y0} L${X0},${Y0} Z`;
+  g+=`<path d="${area}" fill="var(--base-soft)"/>`;
+  g+=`<path d="${path(base)}" fill="none" stroke="var(--base)" stroke-width="2.5" stroke-linejoin="round"/>`;
+  g+=`<path d="${path(kv)}" fill="none" stroke="var(--kv)" stroke-width="2.5" stroke-linejoin="round"/>`;
+  const pk=Math.max(...base), pkI=base.indexOf(pk);
+  g+=`<circle cx="${sx(steps[pkI]).toFixed(1)}" cy="${sy(pk).toFixed(1)}" r="4" fill="var(--base)"/>`;
+  g+=`<text x="${(sx(steps[pkI])-6).toFixed(1)}" y="${(sy(pk)-4).toFixed(1)}" text-anchor="end" fill="var(--base)" style="font-weight:700">${pk} ms</text>`;
+  const lk=kv[kv.length-1];
+  g+=`<circle cx="${sx(maxStep).toFixed(1)}" cy="${sy(lk).toFixed(1)}" r="4" fill="var(--kv)"/>`;
+  g+=`<text x="${(sx(maxStep)-6).toFixed(1)}" y="${(sy(lk)-6).toFixed(1)}" text-anchor="end" fill="var(--kv)" style="font-weight:700">${lk} ms</text>`;
+  document.getElementById('attn-chart').innerHTML=g;
+})();
+
+/* ---------- allocation bars ---------- */
+(function(){
+  const rows=[{"name": "Wall clock", "base": 352.6, "kv": 80.8, "kvColor": "--kv", "up": false}, {"name": "GPU kernels", "base": 330.4, "kv": 24.2, "kvColor": "--kv", "up": false}, {"name": "Host idle gaps", "base": 22.1, "kv": 56.6, "kvColor": "--amber", "up": true}, {"name": "Mem streaming", "base": 22.7, "kv": 22.7, "kvColor": "--kv", "up": false}, {"name": "Tensor math", "base": 307.7, "kv": 1.5, "kvColor": "--purple", "up": false}];
+  const X0=155,X1=470, max=Math.max(...rows.map(r=>r.base));
+  const sw=v=>(v/max)*(X1-X0);
+  let g='',y=22;
+  rows.forEach(r=>{
+    g+=`<text x="146" y="${y+12}" text-anchor="end" font-size="11" fill="var(--muted)">${r.name}</text>`;
+    g+=`<rect x="${X0}" y="${y}" width="${sw(r.base).toFixed(1)}" height="10" rx="3" fill="var(--base)"/>`;
+    g+=`<rect x="${X0}" y="${y+12}" width="${sw(r.kv).toFixed(1)}" height="10" rx="3" fill="var(${r.kvColor})"/>`;
+    g+=`<text x="${(X0+sw(r.base)+6).toFixed(1)}" y="${y+8}" font-size="11" fill="var(--base)">${r.base}s</text>`;
+    g+=`<text x="${(X0+Math.max(sw(r.kv),4)+6).toFixed(1)}" y="${y+21}" font-size="11" fill="var(${r.kvColor})">${r.kv}s${r.up?' ▲':''}</text>`;
+    y+=54;
+  });
+  g+=`<text x="312" y="288" text-anchor="middle" class="axis-title">seconds (shared scale)</text>`;
+  document.getElementById('alloc-chart').innerHTML=g;
+})();
+
+/* ---------- per-step table ---------- */
+function renderPerstep(mode){
+  const t=document.getElementById('perstep-table');
+  if(mode==='kv'){
+    const cols=DATA.ch2_cols, hot='Attn';
+    let h='<thead><tr><th>Step</th>'+cols.map(c=>`<th>${c}</th>`).join('')+'<th>Total</th></tr></thead>';
+    let b='<tbody>'+DATA.ch2.map(r=>{
+      let tds=`<td>${r[0]}</td>`;
+      cols.forEach((c,i)=>{const v=r[i+1];tds+=`<td class="${c===hot?'cell-kv':''}">${v}</td>`;});
+      tds+=`<td class="to">${r[r.length-1]}</td>`;
+      return `<tr>${tds}</tr>`;}).join('')+'</tbody>';
+    t.innerHTML=h+b;
+  } else if(mode==='base'){
+    const cols=DATA.ch1_cols, hot='Attn';
+    let h='<thead><tr><th>Step</th>'+cols.map(c=>`<th>${c}</th>`).join('')+'<th>Total</th></tr></thead>';
+    let b='<tbody>'+DATA.ch1.map(r=>{
+      let tds=`<td>${r[0]}</td>`;
+      cols.forEach((c,i)=>{const v=r[i+1];tds+=`<td class="${c===hot?'cell-hot':''}">${v}</td>`;});
+      tds+=`<td class="to">${r[r.length-1]}</td>`;
+      return `<tr>${tds}</tr>`;}).join('')+'</tbody>';
+    t.innerHTML=h+b;
+  } else { // delta: attn + total, base vs kv
+    let h='<thead><tr><th>Step</th><th>Attn — naive</th><th>Attn — cached</th><th>Attn speedup</th><th>Total — naive</th><th>Total — cached</th><th>Step speedup</th></tr></thead>';
+    let b='<tbody>';
+    DATA.steps.forEach((s,i)=>{
+      const ab=DATA.attn_base[i], ak=DATA.attn_kv[i], tb=DATA.total_base[i], tk=DATA.total_kv[i];
+      const asx=(ab/ak), tsx=(tb/tk);
+      const apill=asx>=10?'big':'good', tpill=tsx>=2?'big':'good';
+      b+=`<tr><td>#${s}</td>`+
+         `<td class="cell-hot">${ab.toFixed(2)}</td><td class="cell-kv">${ak.toFixed(2)}</td>`+
+         `<td><span class="pill ${apill}">${asx.toFixed(1)}×</span></td>`+
+         `<td class="from">${tb.toFixed(1)}</td><td class="to">${tk.toFixed(1)}</td>`+
+         `<td><span class="pill ${tpill}">${tsx.toFixed(1)}×</span></td></tr>`;
+    });
+    b+='</tbody>'; t.innerHTML=h+b;
+  }
+}
+function showTab(mode){
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.tab===mode));
+  renderPerstep(mode);
+}
+renderPerstep('delta');
+
+/* ---------- hardware table ---------- */
+(function(){
+  const t=document.getElementById('hw-table');
+  let h='<thead><tr><th>Step</th><th>Total latency (ms)</th><th>Active GPU (ms)</th><th>GPU speedup</th><th>Host idle gap (ms)</th><th>GPU duty (cached)</th><th>Regime</th></tr></thead>';
+  const dutyMax=Math.max(...DATA.hw.map(r=>parseFloat(r.duty_kv)||0));
+  let b='<tbody>'+DATA.hw.map(r=>{
+    const spdNum=parseFloat(r.spd)||1, pill=spdNum>=10?'big':'good';
+    const arrow=(a)=>`<span class="from">${a[0]}</span><span class="arrow">→</span><span class="to">${a[1]}</span>`;
+    const dk=parseFloat(r.duty_kv)||0, w=Math.round(dk/dutyMax*22);
+    return `<tr><td>${r.step}</td>`+
+      `<td>${arrow(r.lat)}</td><td>${arrow(r.gpu)}</td>`+
+      `<td><span class="pill ${pill}">${r.spd}</span></td>`+
+      `<td>${arrow(r.gap)}</td>`+
+      `<td><span class="bar" style="width:${w}px"></span> ${r.duty_kv}</td>`+
+      `<td style="text-align:left;color:var(--muted)">${r.regime}</td></tr>`;
+  }).join('')+'</tbody>';
+  t.innerHTML=h+b;
+})();
+</script>
+</body>
+</html>

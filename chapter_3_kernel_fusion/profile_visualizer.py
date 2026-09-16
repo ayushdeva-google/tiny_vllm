@@ -9,18 +9,51 @@ def parse_file(filename):
     with open(filename) as f:
         data = json.load(f)
     
-    rmsnorm_attn_time = 0
-    rmsnorm_ffn_time = 0
-    rmsnorm_final_time = 0
+    rmsnorm_attn_time = 0.0
+    rmsnorm_ffn_time = 0.0
+    rmsnorm_final_time = 0.0
     samples = 0
     
     for token in data.get('tokens', []):
         if 'breakdown' in token and token['breakdown']:
             b = token['breakdown']
-            rmsnorm_attn_time += b.get('RMSNorm_Attn', 0)
-            rmsnorm_ffn_time += b.get('RMSNorm_FFN', 0)
-            rmsnorm_final_time += b.get('RMSNorm_Final', 0)
+            rmsnorm_attn_time += b.get('RMSNorm_Attn', 0.0)
+            rmsnorm_ffn_time += b.get('RMSNorm_FFN', 0.0)
+            rmsnorm_final_time += b.get('RMSNorm_Final', 0.0)
             samples += 1
+
+    # If breakdown values are 0 (raw CUDA C++ kernels not mapped to PyTorch FunctionEvent),
+    # extract exact GPU kernel execution times directly from Chrome trace events
+    if samples > 0 and (rmsnorm_attn_time + rmsnorm_ffn_time + rmsnorm_final_time) == 0:
+        traces_dir = os.path.join(os.path.dirname(filename), "traces")
+        if os.path.exists(traces_dir):
+            trace_files = [os.path.join(traces_dir, f) for f in os.listdir(traces_dir) if f.endswith(".json")]
+            attn_tot = 0.0
+            ffn_tot = 0.0
+            final_tot = 0.0
+            trace_count = 0
+            for tf in sorted(trace_files):
+                try:
+                    with open(tf) as f:
+                        tr = json.load(f)
+                    evs = tr.get("traceEvents", [])
+                    a = sum(e.get("dur", 0) for e in evs if e.get("name") == "RMSNorm_Attn" and e.get("cat") == "gpu_user_annotation") / 1000.0
+                    fn = sum(e.get("dur", 0) for e in evs if e.get("name") == "RMSNorm_FFN" and e.get("cat") == "gpu_user_annotation") / 1000.0
+                    fl = sum(e.get("dur", 0) for e in evs if e.get("name") == "RMSNorm_Final" and e.get("cat") == "gpu_user_annotation") / 1000.0
+                    if a > 0 or fn > 0:
+                        attn_tot += a
+                        ffn_tot += fn
+                        final_tot += fl
+                        trace_count += 1
+                except Exception:
+                    pass
+            if trace_count > 0:
+                return {
+                    "RMSNorm_Attn": attn_tot / trace_count,
+                    "RMSNorm_FFN": ffn_tot / trace_count,
+                    "RMSNorm_Final": final_tot / trace_count,
+                    "Total": (attn_tot + ffn_tot + final_tot) / trace_count,
+                }
             
     if samples > 0:
         return {
@@ -32,12 +65,14 @@ def parse_file(filename):
     return None
 
 def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_json = os.path.join(script_dir, "profile_results", "token_metrics.json")
+
     parser = argparse.ArgumentParser(description="Generate RMSNorm Speedup HTML Dashboard")
-    parser.add_argument("--json", type=str, default="profile_results/token_metrics.json", help="Path to chapter 3 token_metrics.json")
+    parser.add_argument("--json", type=str, default=default_json, help="Path to chapter 3 token_metrics.json")
     args = parser.parse_args()
 
     # Get paths
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     chap2_json = os.path.join(os.path.dirname(script_dir), "chapter_2_kvcache", "profile_results", "token_metrics.json")
     chap3_json = args.json if os.path.isabs(args.json) else os.path.join(os.getcwd(), args.json)
     
@@ -163,8 +198,17 @@ def main():
     output_path = os.path.join(os.path.dirname(chap3_json), "rmsnorm_speedup_dashboard.html")
     with open(output_path, "w") as f:
         f.write(html_content)
-        
     print(f"[✓] Successfully generated {output_path}")
+
+    # Also save to presentations directory for sharing
+    repo_root = os.path.dirname(script_dir)
+    pres_dir = os.path.join(repo_root, "presentations")
+    if os.path.exists(pres_dir):
+        pres_path = os.path.join(pres_dir, "chapter3-rmsnorm-speedup-dashboard.html")
+        with open(pres_path, "w") as f:
+            f.write(html_content)
+        print(f"[✓] Successfully saved presentation dashboard to: {pres_path}")
+
     print(f"    - Native PyTorch RMSNorm: {c2_metrics['Total']:.4f} ms")
     print(f"    - Fused Kernel RMSNorm:   {c3_metrics['Total']:.4f} ms")
     print(f"    - Speedup:                {speedup:.1f}x")
