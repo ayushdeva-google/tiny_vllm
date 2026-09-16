@@ -34,6 +34,8 @@ profile_results/
 profile_export/
 tools/
 *.html
+!presentations/
+!presentations/**/*.html
 *.sqlite
 *.nsys-rep
 *.qdrep

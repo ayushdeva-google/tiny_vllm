@@ -1,0 +1,980 @@
+<title>CUDA on the Metal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#0A0E14;
+    --surface:#141C27; --surface2:#1B2635; --line:#28323F;
+    --text:#E4EAF1; --muted:#8695A6; --dim:#5B6779;
+    --green:#5CD65C; --amber:#F5A623; --cyan:#4FC3F7; --violet:#B388FF; --red:#FF6B6B;
+    --green-dim:#20401f; --amber-dim:#443318; --cyan-dim:#153340; --violet-dim:#2a2142;
+    --display:"Chakra Petch",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);
+    color:var(--text);font-family:var(--body);
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  #deck{height:100%;width:100%;position:relative}
+
+  #rail{position:fixed;top:0;left:0;right:0;height:2px;background:transparent;z-index:50}
+  #rail .fill{height:100%;width:0;background:var(--green);transition:width .35s ease}
+
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;
+    padding:calc(env(safe-area-inset-top,0px) + 44px) 24px calc(env(safe-area-inset-bottom,0px) + 72px);
+    overflow-y:auto;overflow-x:hidden}
+  .slide.active{display:flex;animation:fade .32s ease both}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.slide.active{animation:none}#rail .fill{transition:none}}
+  .wrap{width:100%;max-width:var(--maxw);margin:auto}
+
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--green);display:flex;align-items:center;gap:10px;margin:0 0 16px}
+  .eyebrow::before{content:"";width:24px;height:1px;background:var(--green);display:inline-block}
+  .eyebrow.amber{color:var(--amber)}.eyebrow.amber::before{background:var(--amber)}
+  .eyebrow.cyan{color:var(--cyan)}.eyebrow.cyan::before{background:var(--cyan)}
+  h1{font-family:var(--display);font-weight:700;letter-spacing:-.01em;line-height:1.03;
+    font-size:clamp(36px,6.4vw,68px);margin:0;text-wrap:balance}
+  h2{font-family:var(--display);font-weight:600;letter-spacing:-.01em;line-height:1.08;
+    font-size:clamp(25px,4.2vw,42px);margin:0 0 6px;text-wrap:balance}
+  .lede{font-size:clamp(15px,2vw,20px);color:var(--muted);line-height:1.55;max-width:64ch;margin:12px 0 0}
+  p{line-height:1.6;color:var(--text)}
+  .mut{color:var(--muted)}
+  code,.mono{font-family:var(--mono)}
+  .k{color:var(--green)}.k-a{color:var(--amber)}.k-c{color:var(--cyan)}.k-v{color:var(--violet)}
+  strong{color:var(--text);font-weight:600}
+  em{color:var(--text);font-style:italic}
+
+  #nav{position:fixed;left:0;right:0;bottom:0;z-index:50;
+    display:flex;align-items:center;justify-content:center;gap:16px;
+    padding:11px 20px calc(env(safe-area-inset-bottom,0px) + 11px);
+    background:linear-gradient(180deg,transparent, rgba(10,14,20,.9)60%);
+    backdrop-filter:blur(6px)}
+  .navbtn{width:36px;height:36px;border-radius:8px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text);cursor:pointer;font-size:16px;
+    display:grid;place-items:center;transition:.16s}
+  .navbtn:hover{border-color:var(--green);color:var(--green)}
+  .navbtn:disabled{opacity:.3;cursor:default;border-color:var(--line);color:var(--dim)}
+  #dots{display:flex;gap:6px;flex-wrap:wrap;max-width:min(58vw,600px);justify-content:center}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--line);border:none;padding:0;
+    cursor:pointer;transition:.2s}
+  .dot:hover{background:var(--muted)}
+  .dot.on{background:var(--green);width:20px;border-radius:4px}
+  #counter{font-family:var(--mono);font-size:12px;color:var(--muted);
+    min-width:52px;text-align:center;font-variant-numeric:tabular-nums}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:3px;border-radius:6px}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .card h3{margin:0 0 8px;font-family:var(--display);font-size:18px;font-weight:600}
+  .card p{margin:0;font-size:14.5px;color:var(--muted);line-height:1.55}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;padding:3px 9px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+  .stat{font-family:var(--display);font-weight:700;font-size:clamp(26px,3.6vw,38px);line-height:1}
+  .divider{height:1px;background:var(--line);margin:20px 0}
+  .callout{border-left:3px solid var(--amber);background:var(--amber-dim);
+    padding:12px 16px;border-radius:0 10px 10px 0;font-size:14.5px;line-height:1.55}
+  .callout.cyan{border-color:var(--cyan);background:var(--cyan-dim)}
+  .callout.green{border-color:var(--green);background:var(--green-dim)}
+  .callout.violet{border-color:var(--violet);background:var(--violet-dim)}
+  ul.clean{list-style:none;padding:0;margin:12px 0 0;display:flex;flex-direction:column;gap:9px}
+  ul.clean li{padding-left:22px;position:relative;line-height:1.5;color:var(--text);font-size:14.5px}
+  ul.clean li::before{content:"▸";position:absolute;left:0;color:var(--green)}
+  ul.clean.amber li::before{color:var(--amber)}
+  ul.clean.cyan li::before{color:var(--cyan)}
+  .kbd{font-family:var(--mono);font-size:12px;background:var(--surface2);border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:6px;padding:2px 7px;color:var(--text)}
+  .btn{font-family:var(--mono);font-size:13px;letter-spacing:.03em;padding:9px 15px;border-radius:9px;
+    border:1px solid var(--green);background:var(--green-dim);color:var(--green);cursor:pointer;transition:.16s}
+  .btn:hover{background:var(--green);color:#06210a}
+  .btn:disabled{opacity:.35;cursor:default}
+  .btn.ghost{border-color:var(--line);background:var(--surface);color:var(--muted)}
+  .btn.ghost:hover:not(:disabled){border-color:var(--muted);color:var(--text)}
+  .ctrls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+  .note{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  figure{margin:0}
+  figcaption{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:8px;text-align:center}
+  svg{max-width:100%;height:auto;display:block}
+  .svgwrap{overflow-x:auto}
+
+  @media (max-width:720px){
+    .grid2,.grid3{grid-template-columns:1fr}
+    .slide{padding-left:16px;padding-right:16px}
+  }
+</style>
+
+<div id="deck">
+  <div id="rail"><div class="fill"></div></div>
+
+  <!-- 1 TITLE -->
+  <section class="slide" data-title="Intro">
+    <div class="wrap">
+      <div class="eyebrow">CUDA 101 · from silicon up</div>
+      <h1>CUDA<br>on the Metal</h1>
+      <p class="lede">What a GPU is made of, how its programming model maps onto that silicon, and a
+        line-by-line trace of a real LLM kernel — RMSNorm.</p>
+      <div class="ctrls">
+        <span class="tag">Reference GPU · NVIDIA L4 (Ada Lovelace)</span>
+        <span class="tag">58 SMs · 7,424 CUDA cores · 24 GB</span>
+      </div>
+      <p class="note" style="margin-top:30px">
+        Navigate with <span class="kbd">←</span> <span class="kbd">→</span> or
+        <span class="kbd">Space</span> · <span class="kbd">F</span> for fullscreen</p>
+    </div>
+  </section>
+
+  <!-- ============ PART 1 ============ -->
+  <!-- 2 WHY GPUs -->
+  <section class="slide" data-title="Why GPUs">
+    <div class="wrap">
+      <div class="eyebrow">Part 1 · What a GPU is</div>
+      <h2>Latency vs Throughput</h2>
+      <p class="lede">A CPU is built to finish a few threads as fast as possible. A GPU is built to keep
+        thousands of threads in flight at once — ideal for the parallel matrix math of deep learning.</p>
+      <div class="grid2" style="margin-top:22px">
+        <div class="card">
+          <span class="tag" style="color:var(--amber);border-color:var(--amber)">CPU · low latency</span>
+          <ul class="clean amber">
+            <li>A few large, fast cores</li>
+            <li>Deep caches, branch prediction, out-of-order execution</li>
+            <li>Optimized to race a <strong>single</strong> task to the finish line</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="tag" style="color:var(--green);border-color:var(--green)">GPU · high throughput</span>
+          <ul class="clean">
+            <li>Thousands of small, simple cores</li>
+            <li>Hides slow memory by juggling many threads</li>
+            <li>Optimized to keep <strong>every lane</strong> busy, all the time</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout cyan" style="margin-top:18px">
+        The same 64-element vector add: a CPU walks it in a handful of sequential passes; a GPU assigns
+        64 threads and does it in essentially one.
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 WHOLE-CHIP ARCHITECTURE -->
+  <section class="slide" data-title="GPU architecture">
+    <div class="wrap">
+      <div class="eyebrow">Part 1 · Physical layout</div>
+      <h2>Inside the L4: The Whole Chip</h2>
+      <p class="lede">The host talks to the GPU over PCIe. On-chip, data climbs a hierarchy: the
+        further from the cores, the larger and slower.</p>
+      <figure class="svgwrap" style="margin-top:16px">
+        <svg viewBox="0 0 840 430" role="img" aria-label="NVIDIA L4 GPU architecture diagram">
+          <defs>
+            <marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#8695A6"/>
+            </marker>
+          </defs>
+          <!-- host -->
+          <rect x="14" y="150" width="120" height="120" rx="10" fill="#141C27" stroke="#28323F"/>
+          <text x="74" y="200" text-anchor="middle" font-family="Chakra Petch" font-size="16" fill="#E4EAF1">CPU</text>
+          <text x="74" y="220" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#8695A6">(Host)</text>
+          <text x="74" y="244" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#5B6779">System RAM</text>
+          <!-- pcie -->
+          <line x1="134" y1="210" x2="196" y2="210" stroke="#8695A6" stroke-width="1.5" marker-end="url(#ar)" marker-start="url(#ar)"/>
+          <text x="165" y="200" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#8695A6">PCIe</text>
+          <text x="165" y="223" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#8695A6">Gen4</text>
+          <!-- GPU outer -->
+          <rect x="206" y="14" width="620" height="402" rx="14" fill="none" stroke="#28323F" stroke-dasharray="4 4"/>
+          <text x="222" y="34" font-family="Chakra Petch" font-size="13" fill="#8695A6">NVIDIA L4 GPU · Ada Lovelace</text>
+          <!-- VRAM -->
+          <rect x="230" y="48" width="574" height="46" rx="9" fill="#443318" stroke="#F5A623"/>
+          <text x="517" y="70" text-anchor="middle" font-family="Chakra Petch" font-size="15" fill="#F5A623">Global Memory / VRAM — 24 GB GDDR6</text>
+          <text x="517" y="86" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#c99b52">bandwidth ~300 GB/s</text>
+          <!-- L2 -->
+          <line x1="517" y1="94" x2="517" y2="112" stroke="#8695A6" stroke-width="1.3" marker-end="url(#ar)" marker-start="url(#ar)"/>
+          <rect x="230" y="112" width="574" height="38" rx="9" fill="#153340" stroke="#4FC3F7"/>
+          <text x="517" y="136" text-anchor="middle" font-family="Chakra Petch" font-size="14" fill="#4FC3F7">L2 Cache — shared across all 58 SMs</text>
+          <!-- connectors to SMs -->
+          <line x1="517" y1="150" x2="517" y2="168" stroke="#8695A6" stroke-width="1.3"/>
+          <line x1="300" y1="168" x2="734" y2="168" stroke="#28323F" stroke-width="1.3"/>
+          <!-- SM row -->
+          <g>
+            <!-- 5 SMs + ellipsis -->
+            <g font-family="Chakra Petch" font-size="13" fill="#5CD65C">
+              <rect x="248" y="184" width="96" height="90" rx="8" fill="#20401f" stroke="#5CD65C"/>
+              <text x="296" y="215" text-anchor="middle">SM 1</text>
+              <rect x="356" y="184" width="96" height="90" rx="8" fill="#20401f" stroke="#5CD65C"/>
+              <text x="404" y="215" text-anchor="middle">SM 2</text>
+              <rect x="464" y="184" width="96" height="90" rx="8" fill="#20401f" stroke="#5CD65C"/>
+              <text x="512" y="215" text-anchor="middle">SM 3</text>
+              <rect x="572" y="184" width="96" height="90" rx="8" fill="#20401f" stroke="#5CD65C"/>
+              <text x="620" y="215" text-anchor="middle">SM 4</text>
+              <rect x="680" y="184" width="96" height="90" rx="8" fill="#141C27" stroke="#28323F"/>
+              <text x="728" y="215" text-anchor="middle" fill="#8695A6">···</text>
+              <text x="728" y="235" text-anchor="middle" font-size="11" fill="#5B6779">SM 58</text>
+            </g>
+            <g font-family="IBM Plex Mono" font-size="9" fill="#7bbf7b">
+              <text x="296" y="238" text-anchor="middle">128 cores</text>
+              <text x="296" y="252" text-anchor="middle">L1 + regs</text>
+              <text x="404" y="238" text-anchor="middle">128 cores</text>
+              <text x="404" y="252" text-anchor="middle">L1 + regs</text>
+              <text x="512" y="238" text-anchor="middle">128 cores</text>
+              <text x="512" y="252" text-anchor="middle">L1 + regs</text>
+              <text x="620" y="238" text-anchor="middle">128 cores</text>
+              <text x="620" y="252" text-anchor="middle">L1 + regs</text>
+            </g>
+          </g>
+          <!-- connectors from bus to each SM -->
+          <g stroke="#28323F" stroke-width="1.2">
+            <line x1="296" y1="168" x2="296" y2="184"/>
+            <line x1="404" y1="168" x2="404" y2="184"/>
+            <line x1="512" y1="168" x2="512" y2="184"/>
+            <line x1="620" y1="168" x2="620" y2="184"/>
+            <line x1="728" y1="168" x2="728" y2="184"/>
+          </g>
+          <!-- GigaThread engine note -->
+          <rect x="248" y="296" width="528" height="40" rx="8" fill="#141C27" stroke="#28323F"/>
+          <text x="512" y="315" text-anchor="middle" font-family="Chakra Petch" font-size="13" fill="#E4EAF1">GigaThread Engine</text>
+          <text x="512" y="329" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#8695A6">hardware scheduler — distributes blocks across the 58 SMs</text>
+          <!-- legend -->
+          <g font-family="IBM Plex Mono" font-size="10.5">
+            <rect x="248" y="356" width="12" height="12" rx="3" fill="#443318" stroke="#F5A623"/>
+            <text x="266" y="366" fill="#8695A6">memory</text>
+            <rect x="340" y="356" width="12" height="12" rx="3" fill="#153340" stroke="#4FC3F7"/>
+            <text x="358" y="366" fill="#8695A6">cache</text>
+            <rect x="420" y="356" width="12" height="12" rx="3" fill="#20401f" stroke="#5CD65C"/>
+            <text x="438" y="366" fill="#8695A6">compute (SM)</text>
+          </g>
+        </svg>
+        <figcaption>Schematic of the NVIDIA L4 (Ada Lovelace). Component counts per NVIDIA's L4 spec.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 4 INSIDE AN SM -->
+  <section class="slide" data-title="Inside an SM">
+    <div class="wrap">
+      <div class="eyebrow">Part 1 · The core engine</div>
+      <h2>Inside a Streaming Multiprocessor</h2>
+      <p class="lede">Every SM is a self-contained processor: its own register file, its own shared
+        memory, and the cores that do the math. A block lives entirely inside one SM.</p>
+      <div class="grid2" style="margin-top:16px;align-items:center">
+        <figure class="svgwrap">
+          <svg viewBox="0 0 420 360" role="img" aria-label="Streaming Multiprocessor internal diagram">
+            <rect x="8" y="8" width="404" height="344" rx="12" fill="none" stroke="#5CD65C" stroke-dasharray="4 4"/>
+            <text x="24" y="30" font-family="Chakra Petch" font-size="13" fill="#5CD65C">Streaming Multiprocessor (SM)</text>
+            <!-- warp schedulers -->
+            <rect x="24" y="44" width="372" height="34" rx="8" fill="#2a2142" stroke="#B388FF"/>
+            <text x="210" y="65" text-anchor="middle" font-family="Chakra Petch" font-size="12" fill="#B388FF">4 × Warp Scheduler — issues 1 instruction to 32 cores</text>
+            <!-- registers -->
+            <rect x="24" y="88" width="182" height="46" rx="8" fill="#443318" stroke="#F5A623"/>
+            <text x="115" y="108" text-anchor="middle" font-family="Chakra Petch" font-size="12" fill="#F5A623">Register File</text>
+            <text x="115" y="124" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#c99b52">65,536 regs · 256 KB · ~1 cyc</text>
+            <!-- shared / L1 -->
+            <rect x="214" y="88" width="182" height="46" rx="8" fill="#153340" stroke="#4FC3F7"/>
+            <text x="305" y="108" text-anchor="middle" font-family="Chakra Petch" font-size="12" fill="#4FC3F7">Shared Memory / L1</text>
+            <text x="305" y="124" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="#5aa9cc">on-chip · per-block · ~20 cyc</text>
+            <!-- cuda cores grid -->
+            <rect x="24" y="144" width="278" height="164" rx="8" fill="#0f1a12" stroke="#5CD65C"/>
+            <text x="163" y="163" text-anchor="middle" font-family="Chakra Petch" font-size="12" fill="#5CD65C">128 CUDA Cores</text>
+            <g id="ccgrid"></g>
+            <!-- tensor cores -->
+            <rect x="310" y="144" width="86" height="164" rx="8" fill="#141C27" stroke="#28323F"/>
+            <text x="353" y="163" text-anchor="middle" font-family="Chakra Petch" font-size="11.5" fill="#E4EAF1">4 Tensor</text>
+            <text x="353" y="178" text-anchor="middle" font-family="Chakra Petch" font-size="11.5" fill="#E4EAF1">Cores</text>
+            <g fill="#3a4658">
+              <rect x="322" y="190" width="62" height="24" rx="4"/>
+              <rect x="322" y="220" width="62" height="24" rx="4"/>
+              <rect x="322" y="250" width="62" height="24" rx="4"/>
+              <rect x="322" y="280" width="62" height="24" rx="4"/>
+            </g>
+            <text x="353" y="322" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#5B6779">matrix MAC</text>
+            <!-- constant cache -->
+            <rect x="24" y="318" width="372" height="26" rx="7" fill="#141C27" stroke="#28323F"/>
+            <text x="210" y="335" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#8695A6">Constant Cache — broadcasts kernel args to every thread</text>
+          </svg>
+          <figcaption>One of 58 identical SMs on the L4.</figcaption>
+        </figure>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card" style="padding:14px 16px"><h3 style="font-size:15px">Warp scheduler</h3>
+            <p>Issues one instruction to a warp of 32 cores per cycle. Four per SM.</p></div>
+          <div class="card" style="padding:14px 16px"><h3 style="font-size:15px">Registers vs cores</h3>
+            <p>The core is a bare calculator with no memory; the <em>thread</em> owns its private registers. That split is what makes context switches free.</p></div>
+          <div class="card" style="padding:14px 16px"><h3 style="font-size:15px">Shared memory</h3>
+            <p>Fast on-chip SRAM the whole block cooperates through — the reason a block can't be split across two SMs.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 SOFTWARE MODEL -->
+  <section class="slide" data-title="Software model">
+    <div class="wrap">
+      <div class="eyebrow cyan">Part 1 · The programming model</div>
+      <h2>What You Write vs What Runs It</h2>
+      <p class="lede">You program in logical terms. The hardware maps each one onto physical silicon.
+        Understanding that mapping is the whole game.</p>
+      <div class="grid2" style="margin-top:18px">
+        <div class="card">
+          <span class="tag" style="color:var(--cyan);border-color:var(--cyan)">Software · logical</span>
+          <ul class="clean cyan">
+            <li><strong>Kernel</strong> — one C++ function, run thousands of times, each with a different ID</li>
+            <li><strong>Grid</strong> — all the blocks in one kernel launch</li>
+            <li><strong>Block</strong> — a cooperating team of up to <span class="k">1024</span> threads</li>
+            <li><strong>Thread</strong> — the smallest unit; you write from its point of view</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="tag" style="color:var(--green);border-color:var(--green)">Hardware · physical</span>
+          <ul class="clean">
+            <li><strong>GigaThread Engine</strong> — hands blocks out to SMs</li>
+            <li><strong>SM</strong> — a physical processor; the L4 has <span class="k">58</span></li>
+            <li><strong>Warp</strong> — <span class="k">32</span> threads run in lockstep</li>
+            <li><strong>CUDA Core</strong> — one ALU, one thread's instruction</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout green" style="margin-top:18px">
+        <strong>The mapping:</strong> a <span class="k-c">Block</span> is pinned to exactly one
+        <span class="k">SM</span>; inside it, threads are executed as <span class="k-v">Warps</span> of 32.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PART 2 ============ -->
+  <!-- 6 BLOCK LIMIT -->
+  <section class="slide" data-title="The 1024 cap">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <h2>The Block, and Why It Caps at 1024</h2>
+      <p class="lede">A block is a team that cooperates through shared memory and
+        <code class="k">__syncthreads()</code> — so the whole team must fit on one SM at the same time.</p>
+      <div class="grid2" style="margin-top:18px;align-items:start">
+        <div class="card">
+          <h3>The deadlock the cap prevents</h3>
+          <p style="margin-bottom:10px">Suppose you could launch 4,096 threads on an SM that physically
+            holds ~1,536:</p>
+          <ul class="clean amber">
+            <li>The SM loads the first 1,536 threads; they run and hit <code>__syncthreads()</code></li>
+            <li>All 1,536 now <strong>pause</strong>, waiting for the other 2,560</li>
+            <li>But those can't start — the SM is full of paused threads</li>
+            <li style="color:var(--red)">Nobody can proceed. Permanent deadlock.</li>
+          </ul>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="callout green">
+            <strong>The fix:</strong> cap a block at <span class="k">1024</span> threads — safely below any
+            SM's physical limit. An entire block is then <em>guaranteed</em> to fit on the silicon at once,
+            so the barrier can always be satisfied.
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <p><span class="mono k-a">1024</span> threads/block · <span class="mono k">~1,536</span>
+              active threads/SM · one block always fits with room to spare.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 GRID-STRIDE -->
+  <section class="slide" data-title="Grid-stride">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <h2>More Data Than Threads? Loop.</h2>
+      <p class="lede">2048 elements but only 1024 threads. You don't ask for more threads — each thread
+        processes several elements in sequence: a <strong>grid-stride loop</strong>.</p>
+      <figure class="svgwrap" style="margin-top:18px">
+        <svg viewBox="0 0 840 150" role="img" aria-label="Grid-stride loop mapping">
+          <text x="0" y="20" font-family="IBM Plex Mono" font-size="12" fill="#8695A6">index = threadIdx.x + n × blockDim.x&nbsp;&nbsp;(blockDim = 1024)</text>
+          <!-- row of chunks -->
+          <g font-family="IBM Plex Mono" font-size="11">
+            <rect x="0" y="40" width="180" height="44" rx="7" fill="#443318" stroke="#F5A623"/>
+            <text x="90" y="60" text-anchor="middle" fill="#F5A623">elements 0 – 1023</text>
+            <text x="90" y="76" text-anchor="middle" fill="#c99b52" font-size="10">n = 0</text>
+            <rect x="200" y="40" width="180" height="44" rx="7" fill="#443318" stroke="#F5A623" opacity="0.75"/>
+            <text x="290" y="60" text-anchor="middle" fill="#F5A623">elements 1024 – 2047</text>
+            <text x="290" y="76" text-anchor="middle" fill="#c99b52" font-size="10">n = 1</text>
+            <rect x="400" y="40" width="180" height="44" rx="7" fill="#141C27" stroke="#28323F"/>
+            <text x="490" y="60" text-anchor="middle" fill="#5B6779">2048 – 3071</text>
+            <text x="490" y="76" text-anchor="middle" fill="#5B6779" font-size="10">n = 2 …</text>
+            <rect x="600" y="40" width="180" height="44" rx="7" fill="#141C27" stroke="#28323F"/>
+            <text x="690" y="60" text-anchor="middle" fill="#5B6779">3072 – 4095</text>
+            <text x="690" y="76" text-anchor="middle" fill="#5B6779" font-size="10">n = 3 …</text>
+          </g>
+          <!-- thread 0 trace -->
+          <text x="0" y="118" font-family="IBM Plex Mono" font-size="11.5" fill="#5CD65C">Thread 0 handles:</text>
+          <g font-family="IBM Plex Mono" font-size="11.5" fill="#5CD65C">
+            <text x="130" y="118">element 0</text>
+            <text x="235" y="118">→ 1024</text>
+            <text x="320" y="118">→ 2048</text>
+            <text x="410" y="118">→ 3072</text>
+          </g>
+          <text x="0" y="140" font-family="IBM Plex Sans" font-size="11.5" fill="#8695A6">The other 1023 threads do the same for their offsets — a fixed thread count sweeps any size.</text>
+        </svg>
+        <figcaption>One block of 1024 threads covering 2048+ elements by striding.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 8 LATENCY HIDING -->
+  <section class="slide" data-title="Latency hiding">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <h2>Latency Hiding &amp; the Free Context Switch</h2>
+      <p class="lede">An SM has only 128 physical cores but runs 1024 threads. A memory load costs
+        ~200 cycles — so instead of stalling, the SM switches the cores to another ready thread.</p>
+      <div class="grid2" style="margin-top:18px;align-items:start">
+        <div class="card">
+          <h3>Why the switch is free</h3>
+          <p style="margin-bottom:8px">Every thread's registers already sit in the SM's register file.
+            Nothing has to be saved or loaded to switch threads — so a context switch costs
+            <strong>zero cycles</strong>.</p>
+          <p>Thread 0 issues a load and goes to wait; the cores immediately run Thread 1, then Thread 2…
+            By the time Thread 0's data arrives, the cores come back to it. The 128 ALUs stay busy ~100%.</p>
+        </div>
+        <div class="card">
+          <span class="tag">the trade</span>
+          <ul class="clean amber" style="margin-top:12px">
+            <li><span class="k-a">Registers</span> are cheap to switch but limited — 65,536 per SM</li>
+            <li>Use fewer registers per thread → more threads fit → more latency hidden</li>
+            <li>This is <em>occupancy</em>: the lever every CUDA optimizer tunes</li>
+          </ul>
+          <div class="divider"></div>
+          <p class="note">Core = calculator (no memory). Thread = owns the registers.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 WARPS / SIMT concept -->
+  <section class="slide" data-title="Warps &amp; SIMT">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <h2>Warps &amp; SIMT</h2>
+      <p class="lede">You write code for one thread, but the hardware executes a <strong>warp</strong> — 32
+        threads — together. One instruction, 32 threads: <em>Single Instruction, Multiple Threads.</em></p>
+      <div class="grid2" style="margin-top:18px;align-items:start">
+        <div class="card">
+          <h3>How 32 cores read 32 different values</h3>
+          <p>Each thread has a hardwired register holding its own <code class="k-v">threadIdx.x</code>.
+            When you write <code>A[threadIdx.x]</code>, the SM issues one <code class="k-a">LDG</code>
+            instruction — but core 0 computes address <code>A[0]</code>, core 1 computes <code>A[1]</code>,
+            and so on. One instruction, 32 addresses.</p>
+        </div>
+        <div class="card">
+          <span class="tag">common instructions</span>
+          <ul class="clean amber" style="margin-top:12px">
+            <li><code class="k-a">LDG</code> / <code class="k-a">STG</code> — load / store global memory</li>
+            <li><code class="k">FADD</code>, <code class="k">FMUL</code> — float add, multiply</li>
+            <li><code class="k">FFMA</code> — fused multiply-add (one rounded op)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout violet" style="margin-top:18px">
+        <strong>Warp shuffle:</strong> because a warp runs in lockstep,
+        <code class="k-v">__shfl_down_sync</code> passes values directly between the 32 registers in ~5
+        cycles — no trip through shared memory. We'll use this in RMSNorm.
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 WARP WALKTHROUGH (stepper) -->
+  <section class="slide" data-title="Warp walkthrough">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Walkthrough</div>
+      <h2>A Warp at Work: Adding a Vector of 64</h2>
+      <p class="lede">64 elements need 64 threads — exactly <strong>2 warps</strong>. Step through the six
+        instructions the SM issues to compute <code>C = A + B</code>.</p>
+      <div class="card" style="margin-top:16px">
+        <div id="simtViz"></div>
+        <div class="ctrls">
+          <button class="btn ghost" id="simtPrev">← Back</button>
+          <button class="btn" id="simtNext">Next instruction →</button>
+          <span class="note" id="simtOut">Step 0 / 6 · ready · 64 elements = 2 warps of 32</span>
+        </div>
+      </div>
+      <p class="note" style="margin-top:12px">Each warp adds its 32 pairs in a single
+        <code class="k">FADD</code> — the whole vector is done in six warp-instructions.</p>
+    </div>
+  </section>
+
+  <!-- 11 SCHEDULING -->
+  <section class="slide" data-title="Scheduling">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <h2>Kernel Scheduling: The Hardware Queue</h2>
+      <p class="lede">Launch a grid of 2,048 blocks on 58 SMs. The GigaThread Engine fills all 58, and the
+        remaining blocks wait in a hardware queue.</p>
+      <figure class="svgwrap" style="margin-top:16px">
+        <svg viewBox="0 0 840 200" role="img" aria-label="Block queue feeding 58 SMs">
+          <!-- queue -->
+          <text x="0" y="20" font-family="IBM Plex Mono" font-size="12" fill="#8695A6">Grid: 2048 blocks</text>
+          <g>
+            <rect x="0" y="34" width="250" height="54" rx="8" fill="#141C27" stroke="#28323F"/>
+            <text x="125" y="58" text-anchor="middle" font-family="Chakra Petch" font-size="13" fill="#E4EAF1">Hardware queue</text>
+            <text x="125" y="76" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#8695A6">1990 blocks waiting</text>
+          </g>
+          <!-- engine -->
+          <line x1="250" y1="61" x2="300" y2="61" stroke="#8695A6" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8695A6"/></marker></defs>
+          <rect x="300" y="40" width="130" height="42" rx="8" fill="#2a2142" stroke="#B388FF"/>
+          <text x="365" y="60" text-anchor="middle" font-family="Chakra Petch" font-size="11.5" fill="#B388FF">GigaThread</text>
+          <text x="365" y="74" text-anchor="middle" font-family="Chakra Petch" font-size="11.5" fill="#B388FF">Engine</text>
+          <line x1="430" y1="61" x2="470" y2="61" stroke="#8695A6" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <!-- SMs busy -->
+          <text x="480" y="20" font-family="IBM Plex Mono" font-size="12" fill="#5CD65C">58 SMs — all busy</text>
+          <g id="smrow"></g>
+        </svg>
+        <figcaption>The first 58 blocks run; the instant an SM finishes, it pops the next block — no CPU involved.</figcaption>
+      </figure>
+      <div class="callout green" style="margin-top:14px">
+        A massive grid is the <em>goal</em>, not a problem: it keeps all 58 SMs saturated with zero
+        scheduling overhead until the job is done.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PART 3 ============ -->
+  <!-- 12 RMSNORM INTRO -->
+  <section class="slide" data-title="RMSNorm">
+    <div class="wrap">
+      <div class="eyebrow">Part 3 · Putting it together</div>
+      <h2>Walkthrough: an RMSNorm Kernel</h2>
+      <p class="lede">The normalization at the heart of modern LLMs. Compute the root-mean-square of each
+        row, scale by it, then multiply by a learned weight.</p>
+      <figure class="card" style="margin-top:18px;text-align:center;padding:24px 20px">
+        <div class="mono" style="font-size:clamp(15px,2.3vw,19px);line-height:2;color:var(--text)">
+          y<sub>i</sub> &nbsp;=&nbsp;
+          <span style="display:inline-block;text-align:center;vertical-align:middle">
+            <span style="border-bottom:1px solid var(--muted);padding:0 8px;display:block">x<sub>i</sub></span>
+            <span style="display:block;padding:0 8px">√( <span class="k-a">1/d</span> Σ x<sub>j</sub>²
+              + <span class="k-c">ε</span> )</span>
+          </span>
+          &nbsp;×&nbsp; <span class="k-v">w<sub>i</sub></span>
+        </div>
+      </figure>
+      <div class="grid3" style="margin-top:18px">
+        <div class="card"><span class="stat k">32</span><p style="margin-top:6px">rows (S) → launch 32 blocks, one per row</p></div>
+        <div class="card"><span class="stat k-a">2048</span><p style="margin-top:6px">embedding dim (d) → 1024 threads loop ×2</p></div>
+        <div class="card"><span class="stat k-c">1</span><p style="margin-top:6px">block per row — rows are independent</p></div>
+      </div>
+      <div class="callout cyan" style="margin-top:16px">
+        Each row's math is independent, so each row is its own block on its own SM — perfect parallelism,
+        no cross-block communication.
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 PHASES OVERVIEW -->
+  <section class="slide" data-title="Four phases">
+    <div class="wrap">
+      <div class="eyebrow">Part 3 · Inside one block · one row of 2048</div>
+      <h2>Four Phases on the Silicon</h2>
+      <p class="lede">One block of 1024 threads turns one row of 2048 numbers into its normalized output.
+        It happens in four phases — the next four slides walk each one line by line.</p>
+      <figure class="svgwrap" style="margin-top:18px">
+        <svg viewBox="0 0 860 150" role="img" aria-label="RMSNorm four-phase pipeline">
+          <defs><marker id="arp" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8695A6"/></marker></defs>
+          <g font-family="Chakra Petch" font-size="13">
+            <rect x="0" y="34" width="196" height="72" rx="9" fill="#443318" stroke="#F5A623"/>
+            <text x="98" y="58" text-anchor="middle" fill="#F5A623">1 · Local Sums</text>
+            <text x="98" y="78" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#c99b52">square + accumulate</text>
+            <text x="98" y="93" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#c99b52">→ registers</text>
+
+            <rect x="222" y="34" width="196" height="72" rx="9" fill="#20401f" stroke="#5CD65C"/>
+            <text x="320" y="58" text-anchor="middle" fill="#5CD65C">2 · Reduction</text>
+            <text x="320" y="78" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#7bbf7b">shuffle + shared mem</text>
+            <text x="320" y="93" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#7bbf7b">→ grand sum</text>
+
+            <rect x="444" y="34" width="196" height="72" rx="9" fill="#153340" stroke="#4FC3F7"/>
+            <text x="542" y="58" text-anchor="middle" fill="#4FC3F7">3 · Final Math</text>
+            <text x="542" y="78" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#5aa9cc">rsqrt, constants</text>
+            <text x="542" y="93" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#5aa9cc">→ RMS value</text>
+
+            <rect x="666" y="34" width="194" height="72" rx="9" fill="#2a2142" stroke="#B388FF"/>
+            <text x="763" y="58" text-anchor="middle" fill="#B388FF">4 · Apply Weights</text>
+            <text x="763" y="78" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#a48ad1">x · RMS · w</text>
+            <text x="763" y="93" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#a48ad1">→ VRAM</text>
+          </g>
+          <line x1="196" y1="70" x2="222" y2="70" stroke="#8695A6" stroke-width="1.4" marker-end="url(#arp)"/>
+          <line x1="418" y1="70" x2="444" y2="70" stroke="#8695A6" stroke-width="1.4" marker-end="url(#arp)"/>
+          <line x1="640" y1="70" x2="666" y2="70" stroke="#8695A6" stroke-width="1.4" marker-end="url(#arp)"/>
+          <text x="0" y="132" font-family="IBM Plex Sans" font-size="12" fill="#8695A6">Data climbs down the hierarchy and back up: VRAM → registers → shared → registers → VRAM.</text>
+        </svg>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 14 PHASE 1 -->
+  <section class="slide" data-title="Phase 1">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 3 · Phase 1 of 4</div>
+      <h2>Phase 1 — Local Sums</h2>
+      <p class="lede">Every thread squares its own elements and accumulates them in a
+        <strong>private register</strong>. With d = 2048 and 1024 threads, each thread handles two
+        elements via the grid-stride loop.</p>
+      <div class="grid2" style="margin-top:16px;align-items:start">
+<pre class="code"><span class="cm">// per thread · tid = threadIdx.x</span>
+<span class="kw">float</span> local = 0.0f;        <span class="cm">// private register</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = tid; i &lt; d; i += blockDim.x) {
+    <span class="kw">float</span> v = x[row*d + i];   <span class="cm">// LDG from VRAM</span>
+    local += v * v;           <span class="cm">// FFMA, stays in reg</span>
+}
+<span class="cm">// i = tid, then tid+1024  → 2 passes</span></pre>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card" style="padding:14px 16px">
+            <h3 style="font-size:15px">What actually runs</h3>
+            <p>All 32 warps issue the same <code class="k-a">LDG</code> and <code class="k">FFMA</code> in
+              SIMT lockstep. Thread 0 reads x[0] then x[1024]; thread 1 reads x[1] then x[1025], and so on
+              — 1024 independent running sums.</p>
+          </div>
+          <div class="callout">
+            <strong>End state:</strong> 1024 partial sums, one per thread, each in a private register.
+            Nothing has been shared yet.
+          </div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px">
+        <span class="tag" style="color:var(--amber);border-color:var(--amber)">reads VRAM</span>
+        <span class="tag" style="color:var(--amber);border-color:var(--amber)">writes registers</span></p>
+    </div>
+  </section>
+
+  <!-- 15 PHASE 2 -->
+  <section class="slide" data-title="Phase 2">
+    <div class="wrap">
+      <div class="eyebrow">Part 3 · Phase 2 of 4</div>
+      <h2>Phase 2 — The Reduction</h2>
+      <p class="lede">1024 partial sums must become one. Registers are private, so we reduce <em>within</em>
+        each warp by shuffle, hand off through <strong>shared memory</strong>, then reduce once more.</p>
+      <div class="grid2" style="margin-top:14px;align-items:start">
+<pre class="code"><span class="cm">// 1 · collapse 32 lanes → lane 0  (5 steps)</span>
+<span class="kw">for</span> (<span class="kw">int</span> off = 16; off &gt; 0; off &gt;&gt;= 1)
+    local += <span class="fn">__shfl_down_sync</span>(FULL, local, off);
+
+<span class="cm">// 2 · each warp's lane 0 → shared memory</span>
+<span class="kw">if</span> (lane == 0) smem[warpId] = local;
+<span class="fn">__syncthreads</span>();
+
+<span class="cm">// 3 · warp 0 reduces the 32 partial sums</span>
+<span class="kw">float</span> total = (tid &lt; 32) ? smem[tid] : 0;
+<span class="kw">if</span> (warpId == 0)
+    <span class="kw">for</span> (<span class="kw">int</span> off = 16; off &gt; 0; off &gt;&gt;= 1)
+        total += <span class="fn">__shfl_down_sync</span>(FULL, total, off);</pre>
+        <figure class="svgwrap">
+          <svg viewBox="0 0 380 268" role="img" aria-label="Warp shuffle-down reduction tree">
+            <!-- carries (faint verticals) -->
+            <g stroke="#28323F" stroke-width="1.2">
+              <line x1="24" y1="57" x2="24" y2="99"/><line x1="68" y1="57" x2="68" y2="99"/>
+              <line x1="112" y1="57" x2="112" y2="99"/><line x1="156" y1="57" x2="156" y2="99"/>
+              <line x1="24" y1="125" x2="24" y2="167"/><line x1="68" y1="125" x2="68" y2="167"/>
+              <line x1="24" y1="193" x2="24" y2="228"/>
+            </g>
+            <!-- shuffle arrows (amber) -->
+            <g stroke="#F5A623" stroke-width="1.5" fill="none" marker-end="url(#arp)">
+              <line x1="200" y1="50" x2="34" y2="99"/><line x1="244" y1="50" x2="78" y2="99"/>
+              <line x1="288" y1="50" x2="122" y2="99"/><line x1="332" y1="50" x2="166" y2="99"/>
+              <line x1="112" y1="118" x2="34" y2="167"/><line x1="156" y1="118" x2="78" y2="167"/>
+              <line x1="68" y1="186" x2="34" y2="228"/>
+            </g>
+            <!-- nodes -->
+            <g font-family="IBM Plex Mono" font-size="9" text-anchor="middle">
+              <!-- row0: 8 lanes -->
+              <g fill="#20401f" stroke="#5CD65C">
+                <circle cx="24" cy="44" r="12"/><circle cx="68" cy="44" r="12"/><circle cx="112" cy="44" r="12"/>
+                <circle cx="156" cy="44" r="12"/><circle cx="200" cy="44" r="12"/><circle cx="244" cy="44" r="12"/>
+                <circle cx="288" cy="44" r="12"/><circle cx="332" cy="44" r="12"/>
+              </g>
+              <g fill="#5CD65C"><text x="24" y="47">0</text><text x="68" y="47">1</text><text x="112" y="47">2</text>
+                <text x="156" y="47">3</text><text x="200" y="47">4</text><text x="244" y="47">5</text>
+                <text x="288" y="47">6</text><text x="332" y="47">7</text></g>
+              <!-- row1: 4 -->
+              <g fill="#20401f" stroke="#5CD65C"><circle cx="24" cy="112" r="12"/><circle cx="68" cy="112" r="12"/>
+                <circle cx="112" cy="112" r="12"/><circle cx="156" cy="112" r="12"/></g>
+              <g fill="#5CD65C"><text x="24" y="115">0</text><text x="68" y="115">1</text><text x="112" y="115">2</text><text x="156" y="115">3</text></g>
+              <!-- row2: 2 -->
+              <g fill="#20401f" stroke="#5CD65C"><circle cx="24" cy="180" r="12"/><circle cx="68" cy="180" r="12"/></g>
+              <g fill="#5CD65C"><text x="24" y="183">0</text><text x="68" y="183">1</text></g>
+              <!-- row3: total -->
+              <circle cx="24" cy="240" r="13" fill="#5CD65C" stroke="#5CD65C"/>
+              <text x="24" y="243" fill="#06210a" font-weight="600">Σ</text>
+            </g>
+            <!-- step labels -->
+            <g font-family="IBM Plex Mono" font-size="10" fill="#8695A6">
+              <text x="250" y="86">off = 4</text><text x="180" y="154">off = 2</text><text x="110" y="216">off = 1</text>
+            </g>
+          </svg>
+          <figcaption>Shuffle-down reduction — shown as 8 lanes / 3 steps; a real warp is 32 lanes / 5 steps.</figcaption>
+        </figure>
+      </div>
+      <p class="note" style="margin-top:12px">
+        <span class="tag" style="color:var(--green);border-color:var(--green)">registers → shared → registers</span>
+        &nbsp; shuffle is ~5 cyc/step and never touches shared memory; shared memory is only the
+        cross-warp handoff.</p>
+    </div>
+  </section>
+
+  <!-- 16 PHASE 3 -->
+  <section class="slide" data-title="Phase 3">
+    <div class="wrap">
+      <div class="eyebrow cyan">Part 3 · Phase 3 of 4</div>
+      <h2>Phase 3 — Final Math &amp; Constant Memory</h2>
+      <p class="lede">Thread 0 now holds the grand sum of squares. It computes the single RMS scalar and
+        publishes it so all 1024 threads can use it.</p>
+      <div class="grid2" style="margin-top:16px;align-items:start">
+<pre class="code"><span class="kw">if</span> (tid == 0) {
+    <span class="kw">float</span> mean = total / d;        <span class="cm">// d ← constant mem</span>
+    smem_rms = <span class="fn">rsqrtf</span>(mean + eps);  <span class="cm">// eps ← constant mem</span>
+}
+<span class="fn">__syncthreads</span>();   <span class="cm">// RMS now visible to all</span></pre>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card" style="padding:14px 16px">
+            <h3 style="font-size:15px">Why constants, not VRAM</h3>
+            <p><code>d</code> and <code>eps</code> arrived as kernel arguments and live in
+              <span class="k-c">Constant Memory</span> — wired to broadcast one value to every thread's
+              register at once. Thread 0 reads them with zero latency; no VRAM trip.</p>
+          </div>
+          <div class="callout cyan">
+            <strong>rsqrt</strong> is a single hardware instruction — one reciprocal-square-root, not a
+            divide-then-sqrt. The <code class="fn">__syncthreads()</code> guarantees no thread races ahead
+            to Phase 4 before RMS is written.
+          </div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px">
+        <span class="tag" style="color:var(--cyan);border-color:var(--cyan)">reads constant mem</span>
+        <span class="tag" style="color:var(--cyan);border-color:var(--cyan)">writes shared mem</span></p>
+    </div>
+  </section>
+
+  <!-- 17 PHASE 4 -->
+  <section class="slide" data-title="Phase 4">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 3 · Phase 4 of 4</div>
+      <h2>Phase 4 — Applying the Weights</h2>
+      <p class="lede">All 1024 threads wake up, read the shared RMS value, and write the normalized,
+        weighted output back to VRAM — again two elements each.</p>
+      <div class="grid2" style="margin-top:16px;align-items:start">
+<pre class="code"><span class="kw">float</span> rms = smem_rms;          <span class="cm">// from shared mem</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = tid; i &lt; d; i += blockDim.x) {
+    y[row*d + i] =
+        x[row*d + i] * rms * w[i]; <span class="cm">// STG to VRAM</span>
+}
+<span class="cm">// w[i]: left in VRAM, hot in L1 cache</span></pre>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card" style="padding:14px 16px">
+            <h3 style="font-size:15px">Three reads, one write</h3>
+            <p>Each thread reads <code>x[i]</code> (VRAM), <code>rms</code> (shared), and <code>w[i]</code>
+              (VRAM → L1), does a multiply-multiply, and stores <code>y[i]</code>. The weights stay in
+              VRAM on purpose — L1 keeps them hot across every block.</p>
+          </div>
+          <div class="callout green">
+            <strong>Done.</strong> One row of 2048 values is normalized. Multiply by 32 independent blocks
+            and the whole [32 × 2048] tensor is finished in parallel.
+          </div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px">
+        <span class="tag" style="color:var(--amber);border-color:var(--amber)">reads VRAM + shared + L1</span>
+        <span class="tag" style="color:var(--amber);border-color:var(--amber)">writes VRAM</span></p>
+    </div>
+  </section>
+
+  <!-- 14 NUANCES -->
+  <section class="slide" data-title="Nuances">
+    <div class="wrap">
+      <div class="eyebrow cyan">Part 3 · Systems nuances</div>
+      <h2>Where Data Lives Is the Optimization</h2>
+      <p class="lede">Two choices in the trace look lazy but are the real performance wins.</p>
+      <div class="grid2" style="margin-top:18px;align-items:start">
+        <div class="card">
+          <span class="tag" style="color:var(--cyan);border-color:var(--cyan)">The weights w</span>
+          <h3 style="margin-top:12px">Leave them in VRAM</h3>
+          <p>Staging <code>w</code> into shared memory would cost a whole extra loop. Instead, fetch
+            <code>w[i]</code> when needed. The invisible <span class="k">L1 cache</span> keeps it: once
+            block 0 pulls <code>w[0]</code>, it's on-chip — and <code>w</code> is identical for every row,
+            so every other block reads it instantly.</p>
+        </div>
+        <div class="card">
+          <span class="tag" style="color:var(--amber);border-color:var(--amber)">The constants d, ε</span>
+          <h3 style="margin-top:12px">Broadcast from Constant Memory</h3>
+          <p>Kernel arguments like <code>ndim</code> and <code>epsilon</code> land in
+            <span class="k-a">Constant Memory</span> — silicon wired to broadcast one value to every
+            thread's register at once. Read-only, zero-cycle, no VRAM trip.</p>
+        </div>
+      </div>
+      <div class="callout green" style="margin-top:18px">
+        <strong>The pattern:</strong> read-only data shared across threads wants a <em>cache</em> or a
+        <em>broadcast</em>, not a copy. The fastest memory access is the one you never make.
+      </div>
+    </div>
+  </section>
+
+  <!-- 15 RECAP -->
+  <section class="slide" data-title="Recap">
+    <div class="wrap">
+      <div class="eyebrow">The mental model</div>
+      <h1 style="font-size:clamp(28px,4.8vw,50px)">You write threads.<br>
+        <span style="color:var(--green)">The hardware runs warps.</span></h1>
+      <div class="grid3" style="margin-top:26px">
+        <div class="card"><span class="tag">01</span><h3 style="margin-top:10px">Map logical → physical</h3>
+          <p>Blocks pin to SMs; threads execute as warps of 32.</p></div>
+        <div class="card"><span class="tag">02</span><h3 style="margin-top:10px">Hide latency</h3>
+          <p>Flood the SM with threads so cores are never idle.</p></div>
+        <div class="card"><span class="tag">03</span><h3 style="margin-top:10px">Keep data close</h3>
+          <p>Registers &gt; shared &gt; L1 / constant &gt; VRAM.</p></div>
+      </div>
+      <p class="lede" style="margin-top:26px">Every kernel is a negotiation between these three forces.
+        That's CUDA on the metal.</p>
+    </div>
+  </section>
+
+  <nav id="nav">
+    <button class="navbtn" id="prev" aria-label="Previous slide">←</button>
+    <div id="counter">01 / 15</div>
+    <div id="dots"></div>
+    <button class="navbtn" id="next" aria-label="Next slide">→</button>
+  </nav>
+</div>
+
+<style>
+  pre.code{font-family:var(--mono);font-size:13px;line-height:1.65;background:#0C1220;
+    border:1px solid var(--line);border-radius:11px;padding:16px 18px;margin:0;overflow-x:auto;
+    color:var(--text);white-space:pre;tab-size:4}
+  pre.code .cm{color:var(--dim)}
+  pre.code .kw{color:var(--violet)}
+  pre.code .fn{color:var(--cyan)}
+  @media (max-width:720px){pre.code{font-size:11.5px}}
+  .warpRow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .warpLabel{font-family:var(--mono);font-size:12px;color:var(--muted);width:60px;flex-shrink:0}
+  .lane{flex:1;display:flex;gap:3px}
+  .lane .u{flex:1;height:26px;border-radius:4px;background:var(--surface2);border:1px solid var(--line);transition:.15s}
+  .lane .u.ld{background:var(--amber-dim);border-color:var(--amber)}
+  .lane .u.add{background:var(--green-dim);border-color:var(--green)}
+  .lane .u.st{background:var(--cyan-dim);border-color:var(--cyan)}
+  .phasebtn{font-family:var(--mono);font-size:12.5px;padding:8px 12px;border-radius:8px;
+    border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;transition:.15s}
+  .phasebtn.on{border-color:var(--green);color:var(--green);background:var(--green-dim)}
+  .memrow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .memrow .nm{font-family:var(--mono);font-size:11.5px;width:110px;color:var(--muted);flex-shrink:0}
+  .memrow .track{flex:1;height:16px;border-radius:5px;background:var(--surface2);border:1px solid var(--line);overflow:hidden}
+  .memrow .load{height:100%;width:0;transition:width .35s ease}
+</style>
+
+<script>
+(function(){
+  "use strict";
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var N = slides.length, cur = 0;
+  var dotsWrap = document.getElementById('dots');
+  var counter = document.getElementById('counter');
+  var fill = document.querySelector('#rail .fill');
+  var initialized = {};
+
+  slides.forEach(function(s,i){
+    var d=document.createElement('button'); d.className='dot';
+    d.setAttribute('aria-label','Go to '+(s.dataset.title||('slide '+(i+1))));
+    d.addEventListener('click',function(){go(i);}); dotsWrap.appendChild(d);
+  });
+  var dots=Array.prototype.slice.call(dotsWrap.children);
+  function pad(n){return (n<10?'0':'')+n;}
+  function go(i){
+    i=Math.max(0,Math.min(N-1,i));
+    slides[cur].classList.remove('active'); dots[cur].classList.remove('on');
+    cur=i;
+    slides[cur].classList.add('active'); dots[cur].classList.add('on');
+    counter.textContent=pad(cur+1)+' / '+pad(N);
+    fill.style.width=(cur/(N-1)*100)+'%';
+    document.getElementById('prev').disabled=(cur===0);
+    document.getElementById('next').disabled=(cur===N-1);
+    slides[cur].scrollTop=0;
+    if(inits[cur]&&!initialized[cur]){initialized[cur]=true;try{inits[cur]();}catch(e){}}
+  }
+  document.getElementById('prev').addEventListener('click',function(){go(cur-1);});
+  document.getElementById('next').addEventListener('click',function(){go(cur+1);});
+  document.addEventListener('keydown',function(e){
+    var t=e.target.tagName;
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();go(cur+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(cur-1);}
+    else if(e.key==='Home'){e.preventDefault();go(0);}
+    else if(e.key==='End'){e.preventDefault();go(N-1);}
+    else if(e.key==='f'||e.key==='F'){
+      if(!document.fullscreenElement){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();}
+      else{document.exitFullscreen&&document.exitFullscreen();}
+    }
+  });
+
+  var inits={};
+
+  // Slide 4: fill CUDA-core grid in SM diagram (static)
+  inits[3]=function(){
+    var g=document.getElementById('ccgrid');
+    if(!g) return;
+    var cols=16, rows=8, x0=32, y0=172, w=15.5, h=15, gap=1.2;
+    var svgns='http://www.w3.org/2000/svg';
+    for(var r=0;r<rows;r++){for(var c=0;c<cols;c++){
+      var rect=document.createElementNS(svgns,'rect');
+      rect.setAttribute('x',x0+c*(w+gap)); rect.setAttribute('y',y0+r*(h+gap));
+      rect.setAttribute('width',w); rect.setAttribute('height',h);
+      rect.setAttribute('rx',2.5); rect.setAttribute('fill','#20401f'); rect.setAttribute('stroke','#5CD65C');
+      rect.setAttribute('stroke-width','0.6'); g.appendChild(rect);
+    }}
+  };
+
+  // Slide 10: warp walkthrough stepper
+  inits[9]=function(){
+    var viz=document.getElementById('simtViz');
+    [0,1].forEach(function(w){
+      var row=document.createElement('div'); row.className='warpRow';
+      var lbl=document.createElement('div'); lbl.className='warpLabel'; lbl.textContent='Warp '+w;
+      var lane=document.createElement('div'); lane.className='lane'; lane.id='lane'+w;
+      for(var i=0;i<32;i++){var u=document.createElement('div');u.className='u';lane.appendChild(u);}
+      row.appendChild(lbl); row.appendChild(lane); viz.appendChild(row);
+    });
+    var steps=[
+      ['ld','LDG · Warp 0 loads A[0..31]',0],
+      ['ld','LDG · Warp 1 loads A[32..63]',1],
+      ['ld','LDG · both warps load their slice of B',2],
+      ['add','FADD · Warp 0 adds 32 pairs in one instruction',0],
+      ['add','FADD · Warp 1 adds 32 pairs in one instruction',1],
+      ['st','STG · both warps store C to VRAM',2]
+    ];
+    var idx=0;
+    function units(w){return document.getElementById('lane'+w).children;}
+    function paint(w,cls){Array.prototype.forEach.call(units(w),function(u){u.classList.remove('ld','add','st');if(cls)u.classList.add(cls);});}
+    function render(){
+      paint(0,null); paint(1,null);
+      if(idx>0){var s=steps[idx-1];
+        if(s[2]===2){paint(0,s[0]);paint(1,s[0]);}else{paint(s[2],s[0]);}
+        document.getElementById('simtOut').textContent='Step '+idx+' / 6 · '+s[1];
+      } else {
+        document.getElementById('simtOut').textContent='Step 0 / 6 · ready · 64 elements = 2 warps of 32';
+      }
+      document.getElementById('simtPrev').disabled=(idx===0);
+      document.getElementById('simtNext').disabled=(idx===steps.length);
+    }
+    document.getElementById('simtNext').addEventListener('click',function(){if(idx<steps.length){idx++;render();}});
+    document.getElementById('simtPrev').addEventListener('click',function(){if(idx>0){idx--;render();}});
+    render();
+  };
+
+  // Slide 11: fill SM row (static)
+  inits[10]=function(){
+    var g=document.getElementById('smrow'); if(!g)return;
+    var svgns='http://www.w3.org/2000/svg';
+    var cols=15, x0=480, y0=34, w=21, h=21, gap=2.6, count=58, i=0;
+    for(var r=0;r<4 && i<count;r++){for(var c=0;c<cols && i<count;c++){
+      var rect=document.createElementNS(svgns,'rect');
+      rect.setAttribute('x',x0+c*(w+gap)); rect.setAttribute('y',y0+r*(h+gap));
+      rect.setAttribute('width',w); rect.setAttribute('height',h); rect.setAttribute('rx',3);
+      rect.setAttribute('fill','#20401f'); rect.setAttribute('stroke','#5CD65C'); rect.setAttribute('stroke-width','0.8');
+      g.appendChild(rect); i++;
+    }}
+  };
+
+  go(0);
+})();
+</script>
