@@ -378,8 +378,8 @@
             </div>
             <div class="badge-group">
                 <span class="badge-ch1">Without KV: 352.6s &bull; 5.8 tok/s</span>
-                <span class="badge-ch2">With KV: 78.9s &bull; 26.0 tok/s</span>
-                <span class="badge-speedup">🟢 4.5× Wall Speedup | 13.7× Compute Reduction</span>
+                <span class="badge-ch2">With KV: 80.8s &bull; 25.4 tok/s</span>
+                <span class="badge-speedup">🟢 4.4× Wall Speedup | 13.7× Compute Reduction</span>
             </div>
         </header>
 
@@ -409,10 +409,10 @@
                         </div>
                         <div class="kpi-compare-col">
                             <div class="kpi-label-new">With KV</div>
-                            <div class="kpi-val-new" style="color: #38bdf8;">78.9s</div>
+                            <div class="kpi-val-new" style="color: #38bdf8;">80.8s</div>
                         </div>
                     </div>
-                    <div style="text-align: center;"><span class="delta-badge-good">🟢 4.5× Faster</span></div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 4.4× Faster</span></div>
                 </div>
 
                 <!-- KPI 2 -->
@@ -437,11 +437,11 @@
                     <div class="kpi-compare-box">
                         <div class="kpi-compare-col">
                             <div class="kpi-label-old">Without KV</div>
-                            <div class="kpi-val-old">22.2s</div>
+                            <div class="kpi-val-old">22.1s</div>
                         </div>
                         <div class="kpi-compare-col">
                             <div class="kpi-label-new">With KV</div>
-                            <div class="kpi-val-new" style="color: #fbbf24;">54.7s</div>
+                            <div class="kpi-val-new" style="color: #fbbf24;">56.6s</div>
                         </div>
                     </div>
                     <div style="text-align: center;"><span class="delta-badge-warn">⚠️ Host Bottleneck Unmasked</span></div>
@@ -476,7 +476,7 @@
                             <div class="kpi-val-new" style="color: #a78bfa;">1.5s</div>
                         </div>
                     </div>
-                    <div style="text-align: center;"><span class="delta-badge-good">🟢 205× Math Red.</span></div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 207× Math Red.</span></div>
                 </div>
 
                 <!-- KPI 6 -->
@@ -489,10 +489,10 @@
                         </div>
                         <div class="kpi-compare-col">
                             <div class="kpi-label-new">With KV</div>
-                            <div class="kpi-val-new" style="color: #22d3ee;">26.0</div>
+                            <div class="kpi-val-new" style="color: #22d3ee;">25.4</div>
                         </div>
                     </div>
-                    <div style="text-align: center;"><span class="delta-badge-good">🟢 +347% Throughput</span></div>
+                    <div style="text-align: center;"><span class="delta-badge-good">🟢 +337% Throughput</span></div>
                 </div>
             </div>
 
@@ -512,7 +512,7 @@
                     <div class="bar-group">
                         <div class="bar-pair">
                             <div class="bar old-bar" style="height: 100.0%;" title="352.6s"><span>352.6s</span></div>
-                            <div class="bar new-bar" style="height: 22.4%;" title="78.9s"><span>78.9s</span></div>
+                            <div class="bar new-bar" style="height: 22.9%;" title="80.8s"><span>80.8s</span></div>
                         </div>
                         <div class="group-label">Total<br>Wall Clock</div>
                     </div>
@@ -529,8 +529,8 @@
                     <!-- Group 3 -->
                     <div class="bar-group">
                         <div class="bar-pair">
-                            <div class="bar old-bar" style="height: 6.3%;" title="22.2s"><span>22.2s</span></div>
-                            <div class="bar new-bar" style="height: 15.5%;" title="54.7s"><span>54.7s</span></div>
+                            <div class="bar old-bar" style="height: 6.3%;" title="22.1s"><span>22.1s</span></div>
+                            <div class="bar new-bar" style="height: 16.1%;" title="56.6s"><span>56.6s</span></div>
                         </div>
                         <div class="group-label">Host CPU<br>Idle Gaps</div>
                     </div>
@@ -560,7 +560,7 @@
                 <div style="font-weight:700;font-size:0.95rem;color:#fff;margin-bottom:0.4rem;">🎯 Key Comparative Insights & Hardware Bottleneck Analysis:</div>
                 <ul style="margin-left:1.25rem;color:#cbd5e1;font-size:0.88rem;line-height:1.7;">
                     <li><strong>Elimination of O(N²) Quadratic Growth:</strong> In Without KV Cache, recomputing full sequence history caused attention latency to explode from 0.48 ms to 312.92 ms (407.06 ms total step latency). In With KV Cache, KV caching stores past key/value states, keeping linear projections strictly flat (~6.4 ms for SwiGLU, ~0.9 ms for QKV) and attention scaling gracefully as linear vector-matrix GEMV (~1.34 ms at step 2047, a <strong>233.5× speedup</strong>).</li>
-                    <li><strong>Tier 1 Wall-Clock Bottleneck Shift (Host CPU Launch-Bound):</strong> In Without KV Cache, wall-clock time was 93.7% GPU-bound. In With KV Cache, because individual GPU micro-kernels finish in just 5–15 µs, the GPU completes all math in ~12 ms/tok and starves for ~43 ms waiting for the Python interpreter to enqueue kernels. Consequently, <strong>54.7s (69.3%)</strong> of generation time is host CPU dispatch dead time.</li>
+                    <li><strong>Tier 1 Wall-Clock Bottleneck Shift (Host CPU Launch-Bound):</strong> In Without KV Cache, wall-clock time was 93.7% GPU-bound. In With KV Cache, because individual GPU micro-kernels finish in just 5–15 µs, the GPU completes all math in ~12 ms/tok and starves for ~43 ms waiting for the Python interpreter to enqueue kernels. Consequently, <strong>56.6s (70.1%)</strong> of generation time is host CPU dispatch dead time.</li>
                     <li><strong>Tier 2 Inside-GPU Bottleneck Inversion (Memory-Bandwidth Bound):</strong> In Without KV Cache, 93.1% of GPU time was spent crunching tensor arithmetic. In With KV Cache, single-token decode ($S=1$) reads 2.46 GB of weights for 1 vector multiply—an arithmetic intensity of only <strong>1.04 FLOP/byte</strong> (vs. NVIDIA L4 ridge point of <strong>400 FLOP/byte</strong>). Inside the GPU, execution has completely inverted from compute-bound to <strong>93.8% memory-bandwidth bound</strong>.</li>
                     <li><strong>Production Solutions:</strong> In production engines (such as vLLM and TensorRT-LLM), <em>Kernel Fusion</em> reduces kernel launches from 732 down to ~50, and <em>CUDA Graphs</em> replays the entire forward pass in a single 10 µs host invocation, cutting wall-clock decode latency down to ~12 ms/tok and pushing throughput to <strong>80+ tok/s</strong>.</li>
                 </ul>
@@ -588,7 +588,7 @@
     <div id="tab-delta" class="tab-content" style="overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg);">
         <table class="data-table">
             <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Emb</th><th style='white-space:nowrap;'>Norm1</th><th style='white-space:nowrap;'>Q_proj</th><th style='white-space:nowrap;'>K_proj</th><th style='white-space:nowrap;'>V_proj</th><th style='white-space:nowrap;'>RoPE</th><th style='white-space:nowrap;'>KV_Store</th><th style='white-space:nowrap;'>Attn_Comp (Delta)</th><th style='white-space:nowrap;'>O_proj</th><th style='white-space:nowrap;'>Norm2</th><th style='white-space:nowrap;'>Gate+Up (Delta)</th><th style='white-space:nowrap;'>Down (Delta)</th><th style='white-space:nowrap;'>LMHead</th><th style='white-space:nowrap;'>Total Step Latency</th><th style='white-space:nowrap;'>Speedup</th></tr></thead>
-            <tbody><tr><td><strong>#0</strong></td><td>0.01</td><td>0.34</td><td style='color:#ef4444;font-weight:600;'>0.59</td><td style='color:#f97316;'>0.20</td><td style='color:#eab308;'>0.21</td><td>0.36</td><td style='color:#38bdf8;font-weight:700;'>0.036</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.41</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 0.5 <strong class='delta-badge-good'>1.2×</strong></span></td><td>0.61</td><td>0.32</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.51</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 4.7 <strong class='delta-badge-good'>1.1×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.19</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 2.2 <strong class='delta-badge-good'>1.0×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>87.37</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 831.7 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 9.5×</span></td></tr><tr><td><strong>#250</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.38</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 2.4 <strong class='delta-badge-good'>6.2×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.31</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 7.2 <strong class='delta-badge-good'>1.7×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 3.2 <strong class='delta-badge-good'>1.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.51</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 62.3 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.1×</span></td></tr><tr><td><strong>#500</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.52</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 15.4 <strong class='delta-badge-good'>29.4×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 10.4 <strong class='delta-badge-good'>2.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 5.3 <strong class='delta-badge-good'>2.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>54.31</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 57.0 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.0×</span></td></tr><tr><td><strong>#750</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.60</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 46.4 <strong class='delta-badge-good'>77.6×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 13.8 <strong class='delta-badge-good'>3.2×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 7.4 <strong class='delta-badge-good'>3.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.56</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 86.6 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.5×</span></td></tr><tr><td><strong>#1000</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.77</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 102.4 <strong class='delta-badge-good'>133.0×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 16.6 <strong class='delta-badge-good'>3.8×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 8.7 <strong class='delta-badge-good'>4.2×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>56.32</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 151.1 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 2.7×</span></td></tr><tr><td><strong>#1250</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.88</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 152.2 <strong class='delta-badge-good'>172.7×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 23.6 <strong class='delta-badge-good'>5.5×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 12.1 <strong class='delta-badge-good'>5.8×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>57.34</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 216.3 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 3.8×</span></td></tr><tr><td><strong>#1500</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.03</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 205.3 <strong class='delta-badge-good'>200.2×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 28.8 <strong class='delta-badge-good'>6.7×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 13.4 <strong class='delta-badge-good'>6.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>56.43</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 282.2 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 5.0×</span></td></tr><tr><td><strong>#1750</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.07</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 259.2 <strong class='delta-badge-good'>243.0×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 30.9 <strong class='delta-badge-good'>7.2×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 15.6 <strong class='delta-badge-good'>7.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.06</td><td><strong style='color:#fff;font-size:0.95rem;'>55.42</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 343.4 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 6.2×</span></td></tr><tr><td><strong>#2000</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.23</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 324.3 <strong class='delta-badge-good'>263.8×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.31</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 31.7 <strong class='delta-badge-good'>7.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 17.0 <strong class='delta-badge-good'>8.1×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.06</td><td><strong style='color:#fff;font-size:0.95rem;'>68.01</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 415.1 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 6.1×</span></td></tr><tr><td><strong>#2047</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.036</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.34</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 312.9 <strong class='delta-badge-good'>233.8×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.31</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 33.6 <strong class='delta-badge-good'>7.8×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.10</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 17.7 <strong class='delta-badge-good'>8.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>54.61</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 407.1 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 7.5×</span></td></tr></tbody>
+            <tbody><tr><td><strong>#0</strong></td><td>0.01</td><td>0.34</td><td style='color:#ef4444;font-weight:600;'>0.59</td><td style='color:#f97316;'>0.21</td><td style='color:#eab308;'>0.21</td><td>0.36</td><td style='color:#38bdf8;font-weight:700;'>0.036</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.41</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 0.5 <strong class='delta-badge-good'>1.2×</strong></span></td><td>0.62</td><td>0.32</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.51</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 4.7 <strong class='delta-badge-good'>1.0×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.19</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 2.2 <strong class='delta-badge-good'>1.0×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>69.52</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 62.4 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 0.9×</span></td></tr><tr><td><strong>#250</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.38</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 2.3 <strong class='delta-badge-good'>6.0×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 7.2 <strong class='delta-badge-good'>1.7×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 3.2 <strong class='delta-badge-good'>1.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>60.59</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 60.0 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.0×</span></td></tr><tr><td><strong>#500</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.52</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 15.4 <strong class='delta-badge-good'>29.4×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 10.4 <strong class='delta-badge-good'>2.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 5.4 <strong class='delta-badge-good'>2.6×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>65.95</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 58.0 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 0.9×</span></td></tr><tr><td><strong>#750</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.60</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 46.1 <strong class='delta-badge-good'>77.4×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 13.3 <strong class='delta-badge-good'>3.1×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 7.2 <strong class='delta-badge-good'>3.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>57.50</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 84.6 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 1.5×</span></td></tr><tr><td><strong>#1000</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.76</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 102.5 <strong class='delta-badge-good'>134.1×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 16.5 <strong class='delta-badge-good'>3.8×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 8.7 <strong class='delta-badge-good'>4.2×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>57.16</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 150.6 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 2.6×</span></td></tr><tr><td><strong>#1250</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>0.87</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 150.4 <strong class='delta-badge-good'>172.1×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 23.1 <strong class='delta-badge-good'>5.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 11.8 <strong class='delta-badge-good'>5.6×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.64</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 213.6 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 3.6×</span></td></tr><tr><td><strong>#1500</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.02</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 204.3 <strong class='delta-badge-good'>199.5×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 28.7 <strong class='delta-badge-good'>6.7×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 13.4 <strong class='delta-badge-good'>6.4×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.28</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 281.2 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 4.8×</span></td></tr><tr><td><strong>#1750</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.07</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 260.2 <strong class='delta-badge-good'>244.2×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 31.5 <strong class='delta-badge-good'>7.3×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 15.7 <strong class='delta-badge-good'>7.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.82</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 345.2 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 5.9×</span></td></tr><tr><td><strong>#2000</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.23</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 324.7 <strong class='delta-badge-good'>263.2×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 31.8 <strong class='delta-badge-good'>7.4×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 17.0 <strong class='delta-badge-good'>8.1×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>57.54</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 416.3 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 7.2×</span></td></tr><tr><td><strong>#2047</strong></td><td>0.00</td><td>0.27</td><td style='color:#ef4444;font-weight:600;'>0.58</td><td style='color:#f97316;'>0.16</td><td style='color:#eab308;'>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.035</td><td style='color:#ff7675;font-weight:700;'><span style='font-size:0.92rem;'>1.33</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 313.0 <strong class='delta-badge-good'>235.8×</strong></span></td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:700;'><span style='font-size:0.92rem;'>4.30</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 33.7 <strong class='delta-badge-good'>7.8×</strong></span></td><td style='color:#14b8a6;font-weight:700;'><span style='font-size:0.92rem;'>2.09</span><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 17.8 <strong class='delta-badge-good'>8.5×</strong></span></td><td style='color:#c084fc;font-weight:600;'>2.07</td><td><strong style='color:#fff;font-size:0.95rem;'>58.49</strong><span style='font-size:0.68rem;color:#94a3b8;display:block;'>vs 407.8 ms</span></td><td><span class='delta-badge-good' style='font-size:0.75rem;'>🟢 7.0×</span></td></tr></tbody>
         </table>
     </div>
 
@@ -596,7 +596,7 @@
     <div id="tab-ch2" class="tab-content" style="display:none; overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg);">
         <table class="data-table">
             <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Emb</th><th style='white-space:nowrap;'>Norm1</th><th style='white-space:nowrap;'>Q_proj</th><th style='white-space:nowrap;'>K_proj</th><th style='white-space:nowrap;'>V_proj</th><th style='white-space:nowrap;'>RoPE</th><th style='white-space:nowrap;'>KV_Store</th><th style='white-space:nowrap;'>Attn</th><th style='white-space:nowrap;'>O_proj</th><th style='white-space:nowrap;'>Norm2</th><th style='white-space:nowrap;'>Gate+Up</th><th style='white-space:nowrap;'>Act*Mul</th><th style='white-space:nowrap;'>Down</th><th style='white-space:nowrap;'>NormEnd</th><th style='white-space:nowrap;'>LMHead</th><th style='white-space:nowrap;'>Sample</th><th style='white-space:nowrap;'>Total (ms)</th></tr></thead>
-            <tbody><tr><td><strong>#0</strong></td><td>0.008</td><td>0.34</td><td style='color:#3b82f6;font-weight:600;'>0.59</td><td>0.20</td><td>0.21</td><td>0.36</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.41</td><td>0.61</td><td>0.32</td><td style='color:#3b82f6;font-weight:600;'>4.51</td><td>0.05</td><td>2.19</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>87.37</strong></td></tr><tr><td><strong>#250</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.38</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.31</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.51</strong></td></tr><tr><td><strong>#500</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.52</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>54.31</strong></td></tr><tr><td><strong>#750</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.60</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.56</strong></td></tr><tr><td><strong>#1000</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.77</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>56.32</strong></td></tr><tr><td><strong>#1250</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.88</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>57.34</strong></td></tr><tr><td><strong>#1500</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.03</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>56.43</strong></td></tr><tr><td><strong>#1750</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.07</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.06</td><td>0.03</td><td><strong style='color:#fff;'>55.42</strong></td></tr><tr><td><strong>#2000</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.23</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.31</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.06</td><td>0.03</td><td><strong style='color:#fff;'>68.01</strong></td></tr><tr><td><strong>#2047</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.34</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.31</td><td>0.04</td><td>2.10</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>54.61</strong></td></tr></tbody>
+            <tbody><tr><td><strong>#0</strong></td><td>0.008</td><td>0.34</td><td style='color:#3b82f6;font-weight:600;'>0.59</td><td>0.21</td><td>0.21</td><td>0.36</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.41</td><td>0.62</td><td>0.32</td><td style='color:#3b82f6;font-weight:600;'>4.51</td><td>0.05</td><td>2.19</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>69.52</strong></td></tr><tr><td><strong>#250</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.38</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>60.59</strong></td></tr><tr><td><strong>#500</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.52</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>65.95</strong></td></tr><tr><td><strong>#750</strong></td><td>0.002</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.60</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>57.50</strong></td></tr><tr><td><strong>#1000</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.76</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>57.16</strong></td></tr><tr><td><strong>#1250</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>0.87</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.64</strong></td></tr><tr><td><strong>#1500</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.02</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.28</strong></td></tr><tr><td><strong>#1750</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.07</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.82</strong></td></tr><tr><td><strong>#2000</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.23</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>57.54</strong></td></tr><tr><td><strong>#2047</strong></td><td>0.003</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>0.58</td><td>0.16</td><td>0.16</td><td>0.31</td><td style='color:#38bdf8;font-weight:700;'>0.04</td><td style='color:#ff7675;font-weight:700;'>1.33</td><td>0.58</td><td>0.27</td><td style='color:#3b82f6;font-weight:600;'>4.30</td><td>0.04</td><td>2.09</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>58.49</strong></td></tr></tbody>
         </table>
     </div>
 
@@ -604,7 +604,7 @@
     <div id="tab-ch1" class="tab-content" style="display:none; overflow-x: auto; border: 1px solid var(--card-border); border-radius: 0.6rem; background: var(--card-bg);">
         <table class="data-table">
             <thead><tr><th style='white-space:nowrap;'>Step</th><th style='white-space:nowrap;'>Emb</th><th style='white-space:nowrap;'>Norm1</th><th style='white-space:nowrap;'>Q_proj</th><th style='white-space:nowrap;'>K_proj</th><th style='white-space:nowrap;'>V_proj</th><th style='white-space:nowrap;'>RoPE</th><th style='white-space:nowrap;'>Attn</th><th style='white-space:nowrap;'>O_proj</th><th style='white-space:nowrap;'>Norm2</th><th style='white-space:nowrap;'>Gate+Up</th><th style='white-space:nowrap;'>Act*Mul</th><th style='white-space:nowrap;'>Down</th><th style='white-space:nowrap;'>NormEnd</th><th style='white-space:nowrap;'>LMHead</th><th style='white-space:nowrap;'>Sample</th><th style='white-space:nowrap;'>Total (ms)</th></tr></thead>
-            <tbody><tr><td><strong>#0</strong></td><td>0.004</td><td>0.37</td><td>0.62</td><td>0.26</td><td>0.25</td><td>0.39</td><td style='color:#ef4444;font-weight:700;'>0.48</td><td>0.64</td><td>0.35</td><td>4.74</td><td>0.08</td><td>2.21</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>831.74</strong></td></tr><tr><td><strong>#250</strong></td><td>0.01</td><td>0.63</td><td>0.90</td><td>0.23</td><td>0.23</td><td>0.65</td><td style='color:#ef4444;font-weight:700;'>2.36</td><td>0.86</td><td>0.58</td><td>7.15</td><td>0.32</td><td>3.19</td><td>0.04</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.03</td><td><strong style='color:#fff;'>62.28</strong></td></tr><tr><td><strong>#500</strong></td><td>0.03</td><td>1.12</td><td>1.71</td><td>0.50</td><td>0.51</td><td>1.25</td><td style='color:#ef4444;font-weight:700;'>15.42</td><td>1.70</td><td>1.15</td><td>10.44</td><td>1.01</td><td>5.32</td><td>0.07</td><td style='color:#c084fc;font-weight:700;'>2.09</td><td>0.04</td><td><strong style='color:#fff;'>56.99</strong></td></tr><tr><td><strong>#750</strong></td><td>0.04</td><td>1.43</td><td>1.74</td><td>0.51</td><td>0.51</td><td>1.58</td><td style='color:#ef4444;font-weight:700;'>46.36</td><td>1.79</td><td>1.41</td><td>13.81</td><td>2.10</td><td>7.36</td><td>0.09</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>86.60</strong></td></tr><tr><td><strong>#1000</strong></td><td>0.05</td><td>1.73</td><td>2.33</td><td>0.88</td><td>0.87</td><td>1.95</td><td style='color:#ef4444;font-weight:700;'>102.44</td><td>2.34</td><td>1.70</td><td>16.55</td><td>3.33</td><td>8.74</td><td>0.11</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.04</td><td><strong style='color:#fff;'>151.12</strong></td></tr><tr><td><strong>#1250</strong></td><td>0.06</td><td>2.21</td><td>3.37</td><td>1.00</td><td>0.95</td><td>2.40</td><td style='color:#ef4444;font-weight:700;'>152.16</td><td>3.40</td><td>2.24</td><td>23.58</td><td>4.93</td><td>12.06</td><td>0.14</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>216.28</strong></td></tr><tr><td><strong>#1500</strong></td><td>0.07</td><td>2.59</td><td>3.58</td><td>0.97</td><td>0.96</td><td>2.83</td><td style='color:#ef4444;font-weight:700;'>205.31</td><td>3.64</td><td>2.63</td><td>28.81</td><td>7.12</td><td>13.42</td><td>0.16</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>282.25</strong></td></tr><tr><td><strong>#1750</strong></td><td>0.07</td><td>2.94</td><td>4.16</td><td>1.12</td><td>1.08</td><td>3.25</td><td style='color:#ef4444;font-weight:700;'>259.20</td><td>4.21</td><td>3.07</td><td>30.95</td><td>8.15</td><td>15.55</td><td>0.19</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>343.40</strong></td></tr><tr><td><strong>#2000</strong></td><td>0.08</td><td>3.51</td><td>4.33</td><td>1.55</td><td>1.58</td><td>3.85</td><td style='color:#ef4444;font-weight:700;'>324.30</td><td>4.31</td><td>3.65</td><td>31.69</td><td>9.76</td><td>16.98</td><td>0.22</td><td style='color:#c084fc;font-weight:700;'>2.09</td><td>0.04</td><td><strong style='color:#fff;'>415.10</strong></td></tr><tr><td><strong>#2047</strong></td><td>0.09</td><td>3.37</td><td>4.45</td><td>1.50</td><td>1.53</td><td>3.79</td><td style='color:#ef4444;font-weight:700;'>312.92</td><td>4.35</td><td>3.71</td><td>33.58</td><td>10.63</td><td>17.65</td><td>0.22</td><td style='color:#c084fc;font-weight:700;'>2.10</td><td>0.04</td><td><strong style='color:#fff;'>407.06</strong></td></tr></tbody>
+            <tbody><tr><td><strong>#0</strong></td><td>0.004</td><td>0.37</td><td>0.63</td><td>0.25</td><td>0.26</td><td>0.39</td><td style='color:#ef4444;font-weight:700;'>0.48</td><td>0.64</td><td>0.35</td><td>4.73</td><td>0.08</td><td>2.20</td><td>0.02</td><td style='color:#c084fc;font-weight:700;'>2.07</td><td>0.03</td><td><strong style='color:#fff;'>62.37</strong></td></tr><tr><td><strong>#250</strong></td><td>0.01</td><td>0.62</td><td>0.89</td><td>0.23</td><td>0.23</td><td>0.63</td><td style='color:#ef4444;font-weight:700;'>2.27</td><td>0.87</td><td>0.56</td><td>7.15</td><td>0.32</td><td>3.22</td><td>0.04</td><td style='color:#c084fc;font-weight:700;'>2.09</td><td>0.03</td><td><strong style='color:#fff;'>59.99</strong></td></tr><tr><td><strong>#500</strong></td><td>0.03</td><td>1.11</td><td>1.71</td><td>0.49</td><td>0.51</td><td>1.23</td><td style='color:#ef4444;font-weight:700;'>15.37</td><td>1.71</td><td>1.15</td><td>10.43</td><td>1.01</td><td>5.35</td><td>0.06</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>57.98</strong></td></tr><tr><td><strong>#750</strong></td><td>0.04</td><td>1.37</td><td>1.67</td><td>0.49</td><td>0.50</td><td>1.53</td><td style='color:#ef4444;font-weight:700;'>46.15</td><td>1.72</td><td>1.35</td><td>13.25</td><td>2.11</td><td>7.17</td><td>0.09</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>84.57</strong></td></tr><tr><td><strong>#1000</strong></td><td>0.04</td><td>1.73</td><td>2.33</td><td>0.88</td><td>0.87</td><td>1.94</td><td style='color:#ef4444;font-weight:700;'>102.48</td><td>2.34</td><td>1.69</td><td>16.55</td><td>3.34</td><td>8.74</td><td>0.11</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>150.55</strong></td></tr><tr><td><strong>#1250</strong></td><td>0.06</td><td>2.13</td><td>3.26</td><td>0.96</td><td>0.92</td><td>2.33</td><td style='color:#ef4444;font-weight:700;'>150.39</td><td>3.29</td><td>2.17</td><td>23.09</td><td>4.91</td><td>11.82</td><td>0.13</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>213.62</strong></td></tr><tr><td><strong>#1500</strong></td><td>0.07</td><td>2.58</td><td>3.58</td><td>0.97</td><td>0.96</td><td>2.82</td><td style='color:#ef4444;font-weight:700;'>204.29</td><td>3.61</td><td>2.61</td><td>28.67</td><td>7.13</td><td>13.40</td><td>0.16</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>281.16</strong></td></tr><tr><td><strong>#1750</strong></td><td>0.07</td><td>2.97</td><td>4.22</td><td>1.14</td><td>1.10</td><td>3.29</td><td style='color:#ef4444;font-weight:700;'>260.22</td><td>4.27</td><td>3.10</td><td>31.48</td><td>8.15</td><td>15.74</td><td>0.19</td><td style='color:#c084fc;font-weight:700;'>2.08</td><td>0.04</td><td><strong style='color:#fff;'>345.22</strong></td></tr><tr><td><strong>#2000</strong></td><td>0.08</td><td>3.50</td><td>4.32</td><td>1.56</td><td>1.58</td><td>3.87</td><td style='color:#ef4444;font-weight:700;'>324.67</td><td>4.33</td><td>3.67</td><td>31.75</td><td>9.83</td><td>17.04</td><td>0.23</td><td style='color:#c084fc;font-weight:700;'>2.09</td><td>0.05</td><td><strong style='color:#fff;'>416.27</strong></td></tr><tr><td><strong>#2047</strong></td><td>0.08</td><td>3.37</td><td>4.48</td><td>1.51</td><td>1.53</td><td>3.79</td><td style='color:#ef4444;font-weight:700;'>312.96</td><td>4.38</td><td>3.72</td><td>33.72</td><td>10.62</td><td>17.76</td><td>0.22</td><td style='color:#c084fc;font-weight:700;'>2.10</td><td>0.04</td><td><strong style='color:#fff;'>407.78</strong></td></tr></tbody>
         </table>
     </div>
     
@@ -623,35 +623,35 @@
             <td><strong>#0</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">831.7</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">62.4</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">87.37</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">69.52</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
                     <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">12.6</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.96</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(14%)</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.98</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(17%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 1.1×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 1.0×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">819.2</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">49.8</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">75.41</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(86%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">57.54</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(83%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">2%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">20%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">13.7%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">17.2%</span>
                 </div>
             </td>
             <td><span style='color:#38bdf8;font-weight:600;'>Cold JIT / Prefill GEMM</span></td>
@@ -661,16 +661,16 @@
             <td><strong>#250</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">62.3</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">60.0</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">58.51</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">60.59</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">19.5</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">19.4</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.30</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.29</span>
                     <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(19%)</span>
                 </div>
             </td>
@@ -679,17 +679,17 @@
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">42.8</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">40.6</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">47.21</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">49.30</span>
                     <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(81%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">31%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">32%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">19.3%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">18.6%</span>
                 </div>
             </td>
             <td><span style='color:#60a5fa;font-weight:600;'>Both Host CPU Bound (~19–31% Duty)</span></td>
@@ -699,17 +699,17 @@
             <td><strong>#500</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">57.0</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">58.0</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">54.31</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">65.95</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
                     <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">42.7</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.45</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.44</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(17%)</span>
                 </div>
             </td>
             <td>
@@ -717,17 +717,17 @@
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">14.3</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">15.3</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">42.86</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">54.51</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(83%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">75%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">74%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.1%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">17.3%</span>
                 </div>
             </td>
             <td><span style='color:#f59e0b;font-weight:600;'>Without KV Saturation (75%) ➔ With KV Host Starved (21%)</span></td>
@@ -737,73 +737,73 @@
             <td><strong>#750</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">86.6</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">84.6</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">58.56</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">57.50</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">81.4</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">80.1</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.52</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.53</span>
                     <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(20%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 7.1×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 6.9×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.2</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">4.5</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">47.04</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">45.97</span>
                     <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(80%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">94%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">95%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">19.7%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.0%</span>
                 </div>
             </td>
-            <td><span style='color:#34d399;font-weight:600;'>7.1× GPU Speedup</span></td>
+            <td><span style='color:#34d399;font-weight:600;'>6.9× GPU Speedup</span></td>
         </tr>
         
         <tr>
             <td><strong>#1000</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">151.1</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">150.6</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">56.32</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">57.16</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
                     <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">145.7</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.71</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.69</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(20%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 12.4×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 12.5×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.4</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">4.8</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">44.61</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">45.47</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(80%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">96%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">97%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.8%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.5%</span>
                 </div>
             </td>
             <td><span style='color:#10b981;font-weight:600;'>Without KV 96% Saturation ➔ With KV 12.4× GPU Speedup</span></td>
@@ -813,65 +813,65 @@
             <td><strong>#1250</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">216.3</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">213.6</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">57.34</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">58.64</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">211.3</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">208.3</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.82</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.80</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(20%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 17.9×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 17.7×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">4.9</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.3</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">45.52</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">46.84</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(80%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
                     <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">98%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.6%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.1%</span>
                 </div>
             </td>
-            <td><span style='color:#34d399;font-weight:600;'>17.9× GPU Speedup</span></td>
+            <td><span style='color:#34d399;font-weight:600;'>17.7× GPU Speedup</span></td>
         </tr>
         
         <tr>
             <td><strong>#1500</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">282.2</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">281.2</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">56.43</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">58.28</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">275.1</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">273.8</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">11.96</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.95</span>
                     <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 23.0×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 22.9×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">7.2</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">7.4</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">44.47</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">46.33</span>
                     <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
                 </div>
             </td>
@@ -879,7 +879,7 @@
                 <div style="display:flex;align-items:center;white-space:nowrap;">
                     <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">97%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.2%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.5%</span>
                 </div>
             </td>
             <td><span style='color:#10b981;font-weight:600;'>Without KV 97% Saturation ➔ With KV 23.0× GPU Speedup</span></td>
@@ -889,73 +889,73 @@
             <td><strong>#1750</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">343.4</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">345.2</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">55.42</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">58.82</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">337.0</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">339.0</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">12.00</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(22%)</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">11.99</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(20%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 28.1×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 28.3×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.4</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.2</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">43.42</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(78%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">46.83</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(80%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
                     <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">98%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.6%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">20.4%</span>
                 </div>
             </td>
-            <td><span style='color:#34d399;font-weight:600;'>28.1× GPU Speedup</span></td>
+            <td><span style='color:#34d399;font-weight:600;'>28.3× GPU Speedup</span></td>
         </tr>
         
         <tr>
             <td><strong>#2000</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">415.1</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">416.3</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">68.01</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">57.54</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">409.1</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">409.7</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
                     <span style="color:#10b981;font-weight:700;width:55px;">12.17</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(18%)</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 33.6×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 33.7×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.0</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.5</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">55.84</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(82%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">45.37</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">99%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">98%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">17.9%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.1%</span>
                 </div>
             </td>
             <td><span style='color:#10b981;font-weight:600;'>Without KV 98.6% Saturation ➔ With KV 33.6× GPU Speedup</span></td>
@@ -965,35 +965,35 @@
             <td><strong>#2047</strong></td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">407.1</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">407.8</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#fff;font-weight:700;width:55px;">54.61</span>
+                    <span style="color:#fff;font-weight:700;width:55px;">58.49</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">401.2</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">401.6</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#10b981;font-weight:700;width:55px;">12.28</span>
-                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(22%)</span>
+                    <span style="color:#10b981;font-weight:700;width:55px;">12.26</span>
+                    <span style="color:#10b981;font-size:0.75rem;opacity:0.8;">(21%)</span>
                 </div>
             </td>
             <td>
-                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 32.7×</span>
+                <span class="delta-badge-good" style="font-size:0.82rem;padding:0.2rem 0.6rem;">🟢 32.8×</span>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">5.8</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:45px;text-align:right;">6.2</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span style="color:#60a5fa;font-weight:700;width:55px;">42.33</span>
-                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(78%)</span>
+                    <span style="color:#60a5fa;font-weight:700;width:55px;">46.23</span>
+                    <span style="color:#60a5fa;font-size:0.75rem;opacity:0.8;">(79%)</span>
                 </div>
             </td>
             <td>
                 <div style="display:flex;align-items:center;white-space:nowrap;">
-                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">99%</span>
+                    <span style="color:#94a3b8;font-size:0.8rem;width:35px;text-align:right;">98%</span>
                     <span style="color:#475569;margin:0 0.5rem;font-size:0.8rem;">&rarr;</span>
-                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">22.5%</span>
+                    <span class="tag-badge" style="background:#38bdf822;color:#38bdf8;border:1px solid #38bdf844;font-weight:700;">21.0%</span>
                 </div>
             </td>
             <td><span style='color:#10b981;font-weight:600;'>Without KV 98.6% Saturation ➔ With KV 32.7× GPU Speedup (Host Exposed)</span></td>
@@ -1034,119 +1034,119 @@
                 </linearGradient>
             </defs>
             <line x1="70" y1="315.0" x2="1160" y2="315.0" class="grid-line" /><text x="60" y="319.0" text-anchor="end" fill="#94a3b8" font-size="11">0 ms</text><line x1="70" y1="253.88888888888889" x2="1160" y2="253.88888888888889" class="grid-line" /><text x="60" y="257.8888888888889" text-anchor="end" fill="#94a3b8" font-size="11">100 ms</text><line x1="70" y1="192.77777777777777" x2="1160" y2="192.77777777777777" class="grid-line" /><text x="60" y="196.77777777777777" text-anchor="end" fill="#94a3b8" font-size="11">200 ms</text><line x1="70" y1="131.66666666666669" x2="1160" y2="131.66666666666669" class="grid-line" /><text x="60" y="135.66666666666669" text-anchor="end" fill="#94a3b8" font-size="11">300 ms</text><line x1="70" y1="70.55555555555557" x2="1160" y2="70.55555555555557" class="grid-line" /><text x="60" y="74.55555555555557" text-anchor="end" fill="#94a3b8" font-size="11">400 ms</text>
-            <polygon points="70.0,-193.3 191.1,276.9 312.2,280.2 433.3,262.1 554.4,222.6 675.6,182.8 796.7,142.5 917.8,105.1 1038.9,61.3 1160.0,66.2 1160.0,281.6 1038.9,273.4 917.8,281.1 796.7,280.5 675.6,280.0 554.4,280.6 433.3,279.2 312.2,281.8 191.1,279.2 70.0,261.6" fill="url(#gapGrad)" />
-            <polyline points="70.0,-193.3 191.1,276.9 312.2,280.2 433.3,262.1 554.4,222.6 675.6,182.8 796.7,142.5 917.8,105.1 1038.9,61.3 1160.0,66.2" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,3" />
-            <polyline points="70.0,261.6 191.1,279.2 312.2,281.8 433.3,279.2 554.4,280.6 675.6,280.0 796.7,280.5 917.8,281.1 1038.9,273.4 1160.0,281.6" fill="none" stroke="#10b981" stroke-width="3" />
+            <polygon points="70.0,276.9 191.1,278.3 312.2,279.6 433.3,263.3 554.4,223.0 675.6,184.5 796.7,143.2 917.8,104.0 1038.9,60.6 1160.0,65.8 1160.0,279.3 1038.9,279.8 917.8,279.1 796.7,279.4 675.6,279.2 554.4,280.1 433.3,279.9 312.2,274.7 191.1,278.0 70.0,272.5" fill="url(#gapGrad)" />
+            <polyline points="70.0,276.9 191.1,278.3 312.2,279.6 433.3,263.3 554.4,223.0 675.6,184.5 796.7,143.2 917.8,104.0 1038.9,60.6 1160.0,65.8" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,3" />
+            <polyline points="70.0,272.5 191.1,278.0 312.2,274.7 433.3,279.9 554.4,280.1 675.6,279.2 796.7,279.4 917.8,279.1 1038.9,279.8 1160.0,279.3" fill="none" stroke="#10b981" stroke-width="3" />
             
-            <circle cx="70.0" cy="-193.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #0 Naive Full Recomputation', domain: 'Latency: 831.74 ms', step: 'Without KV: 831.74 ms vs With KV: 87.37 ms', dur_ms: 831.74, other: 'Speedup: 9.5×'})"
+            <circle cx="70.0" cy="276.9" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 Naive Full Recomputation', domain: 'Latency: 62.37 ms', step: 'Without KV: 62.37 ms vs With KV: 69.52 ms', dur_ms: 62.37, other: 'Speedup: 0.9×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="70.0" y="-203.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">831.7</text>
+            <text x="70.0" y="266.9" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">62.4</text>
         
-            <circle cx="191.1" cy="276.9" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #250 Naive Full Recomputation', domain: 'Latency: 62.28 ms', step: 'Without KV: 62.28 ms vs With KV: 58.51 ms', dur_ms: 62.28, other: 'Speedup: 1.1×'})"
+            <circle cx="191.1" cy="278.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 Naive Full Recomputation', domain: 'Latency: 59.99 ms', step: 'Without KV: 59.99 ms vs With KV: 60.59 ms', dur_ms: 59.99, other: 'Speedup: 1.0×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="191.1" y="266.9" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">62.3</text>
+            <text x="191.1" y="268.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">60.0</text>
         
-            <circle cx="312.2" cy="280.2" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #500 Naive Full Recomputation', domain: 'Latency: 56.99 ms', step: 'Without KV: 56.99 ms vs With KV: 54.31 ms', dur_ms: 56.99, other: 'Speedup: 1.0×'})"
+            <circle cx="312.2" cy="279.6" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 Naive Full Recomputation', domain: 'Latency: 57.98 ms', step: 'Without KV: 57.98 ms vs With KV: 65.95 ms', dur_ms: 57.98, other: 'Speedup: 0.9×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="312.2" y="270.2" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">57.0</text>
+            <text x="312.2" y="269.6" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">58.0</text>
         
-            <circle cx="433.3" cy="262.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #750 Naive Full Recomputation', domain: 'Latency: 86.60 ms', step: 'Without KV: 86.60 ms vs With KV: 58.56 ms', dur_ms: 86.6, other: 'Speedup: 1.5×'})"
+            <circle cx="433.3" cy="263.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 Naive Full Recomputation', domain: 'Latency: 84.57 ms', step: 'Without KV: 84.57 ms vs With KV: 57.50 ms', dur_ms: 84.57, other: 'Speedup: 1.5×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="433.3" y="252.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">86.6</text>
+            <text x="433.3" y="253.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">84.6</text>
         
-            <circle cx="554.4" cy="222.6" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1000 Naive Full Recomputation', domain: 'Latency: 151.12 ms', step: 'Without KV: 151.12 ms vs With KV: 56.32 ms', dur_ms: 151.12, other: 'Speedup: 2.7×'})"
+            <circle cx="554.4" cy="223.0" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 Naive Full Recomputation', domain: 'Latency: 150.55 ms', step: 'Without KV: 150.55 ms vs With KV: 57.16 ms', dur_ms: 150.55, other: 'Speedup: 2.6×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="554.4" y="212.6" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">151.1</text>
+            <text x="554.4" y="213.0" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">150.6</text>
         
-            <circle cx="675.6" cy="182.8" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1250 Naive Full Recomputation', domain: 'Latency: 216.28 ms', step: 'Without KV: 216.28 ms vs With KV: 57.34 ms', dur_ms: 216.28, other: 'Speedup: 3.8×'})"
+            <circle cx="675.6" cy="184.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 Naive Full Recomputation', domain: 'Latency: 213.62 ms', step: 'Without KV: 213.62 ms vs With KV: 58.64 ms', dur_ms: 213.62, other: 'Speedup: 3.6×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="675.6" y="172.8" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">216.3</text>
+            <text x="675.6" y="174.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">213.6</text>
         
-            <circle cx="796.7" cy="142.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1500 Naive Full Recomputation', domain: 'Latency: 282.25 ms', step: 'Without KV: 282.25 ms vs With KV: 56.43 ms', dur_ms: 282.25, other: 'Speedup: 5.0×'})"
+            <circle cx="796.7" cy="143.2" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 Naive Full Recomputation', domain: 'Latency: 281.16 ms', step: 'Without KV: 281.16 ms vs With KV: 58.28 ms', dur_ms: 281.16, other: 'Speedup: 4.8×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="796.7" y="132.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">282.2</text>
+            <text x="796.7" y="133.2" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">281.2</text>
         
-            <circle cx="917.8" cy="105.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1750 Naive Full Recomputation', domain: 'Latency: 343.40 ms', step: 'Without KV: 343.40 ms vs With KV: 55.42 ms', dur_ms: 343.4, other: 'Speedup: 6.2×'})"
+            <circle cx="917.8" cy="104.0" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 Naive Full Recomputation', domain: 'Latency: 345.22 ms', step: 'Without KV: 345.22 ms vs With KV: 58.82 ms', dur_ms: 345.22, other: 'Speedup: 5.9×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="917.8" y="95.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">343.4</text>
+            <text x="917.8" y="94.0" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">345.2</text>
         
-            <circle cx="1038.9" cy="61.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2000 Naive Full Recomputation', domain: 'Latency: 415.10 ms', step: 'Without KV: 415.10 ms vs With KV: 68.01 ms', dur_ms: 415.1, other: 'Speedup: 6.1×'})"
+            <circle cx="1038.9" cy="60.6" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 Naive Full Recomputation', domain: 'Latency: 416.27 ms', step: 'Without KV: 416.27 ms vs With KV: 57.54 ms', dur_ms: 416.27, other: 'Speedup: 7.2×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1038.9" y="51.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">415.1</text>
+            <text x="1038.9" y="50.6" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">416.3</text>
         
-            <circle cx="1160.0" cy="66.2" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2047 Naive Full Recomputation', domain: 'Latency: 407.06 ms', step: 'Without KV: 407.06 ms vs With KV: 54.61 ms', dur_ms: 407.06, other: 'Speedup: 7.5×'})"
+            <circle cx="1160.0" cy="65.8" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 Naive Full Recomputation', domain: 'Latency: 407.78 ms', step: 'Without KV: 407.78 ms vs With KV: 58.49 ms', dur_ms: 407.78, other: 'Speedup: 7.0×'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1160.0" y="56.2" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">407.1</text>
+            <text x="1160.0" y="55.8" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">407.8</text>
         
             
-            <circle cx="70.0" cy="261.6" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #0 KV Cache', domain: 'Latency: 87.37 ms', step: 'With KV: 87.37 ms vs Without KV: 831.74 ms', dur_ms: 87.37, other: 'Speedup: 9.5× (Eliminated: 744.4 ms)'})"
+            <circle cx="70.0" cy="272.5" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 KV Cache', domain: 'Latency: 69.52 ms', step: 'With KV: 69.52 ms vs Without KV: 62.37 ms', dur_ms: 69.52, other: 'Speedup: 0.9× (Eliminated: 0.0 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="70.0" y="251.6" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">87.4</text>
+            <text x="70.0" y="262.5" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">69.5</text>
             <text x="70.0" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#0</text>
         
-            <circle cx="191.1" cy="279.2" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #250 KV Cache', domain: 'Latency: 58.51 ms', step: 'With KV: 58.51 ms vs Without KV: 62.28 ms', dur_ms: 58.51, other: 'Speedup: 1.1× (Eliminated: 3.8 ms)'})"
+            <circle cx="191.1" cy="278.0" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 KV Cache', domain: 'Latency: 60.59 ms', step: 'With KV: 60.59 ms vs Without KV: 59.99 ms', dur_ms: 60.59, other: 'Speedup: 1.0× (Eliminated: 0.0 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="191.1" y="269.2" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.5</text>
+            <text x="191.1" y="268.0" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">60.6</text>
             <text x="191.1" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#250</text>
         
-            <circle cx="312.2" cy="281.8" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #500 KV Cache', domain: 'Latency: 54.31 ms', step: 'With KV: 54.31 ms vs Without KV: 56.99 ms', dur_ms: 54.31, other: 'Speedup: 1.0× (Eliminated: 2.7 ms)'})"
+            <circle cx="312.2" cy="274.7" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 KV Cache', domain: 'Latency: 65.95 ms', step: 'With KV: 65.95 ms vs Without KV: 57.98 ms', dur_ms: 65.95, other: 'Speedup: 0.9× (Eliminated: 0.0 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="312.2" y="271.8" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">54.3</text>
+            <text x="312.2" y="264.7" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">66.0</text>
             <text x="312.2" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#500</text>
         
-            <circle cx="433.3" cy="279.2" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #750 KV Cache', domain: 'Latency: 58.56 ms', step: 'With KV: 58.56 ms vs Without KV: 86.60 ms', dur_ms: 58.56, other: 'Speedup: 1.5× (Eliminated: 28.0 ms)'})"
+            <circle cx="433.3" cy="279.9" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 KV Cache', domain: 'Latency: 57.50 ms', step: 'With KV: 57.50 ms vs Without KV: 84.57 ms', dur_ms: 57.5, other: 'Speedup: 1.5× (Eliminated: 27.1 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="433.3" y="269.2" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.6</text>
+            <text x="433.3" y="269.9" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">57.5</text>
             <text x="433.3" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#750</text>
         
-            <circle cx="554.4" cy="280.6" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1000 KV Cache', domain: 'Latency: 56.32 ms', step: 'With KV: 56.32 ms vs Without KV: 151.12 ms', dur_ms: 56.32, other: 'Speedup: 2.7× (Eliminated: 94.8 ms)'})"
+            <circle cx="554.4" cy="280.1" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 KV Cache', domain: 'Latency: 57.16 ms', step: 'With KV: 57.16 ms vs Without KV: 150.55 ms', dur_ms: 57.16, other: 'Speedup: 2.6× (Eliminated: 93.4 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="554.4" y="270.6" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">56.3</text>
+            <text x="554.4" y="270.1" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">57.2</text>
             <text x="554.4" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1000</text>
         
-            <circle cx="675.6" cy="280.0" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1250 KV Cache', domain: 'Latency: 57.34 ms', step: 'With KV: 57.34 ms vs Without KV: 216.28 ms', dur_ms: 57.34, other: 'Speedup: 3.8× (Eliminated: 158.9 ms)'})"
+            <circle cx="675.6" cy="279.2" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 KV Cache', domain: 'Latency: 58.64 ms', step: 'With KV: 58.64 ms vs Without KV: 213.62 ms', dur_ms: 58.64, other: 'Speedup: 3.6× (Eliminated: 155.0 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="675.6" y="270.0" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">57.3</text>
+            <text x="675.6" y="269.2" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.6</text>
             <text x="675.6" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1250</text>
         
-            <circle cx="796.7" cy="280.5" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1500 KV Cache', domain: 'Latency: 56.43 ms', step: 'With KV: 56.43 ms vs Without KV: 282.25 ms', dur_ms: 56.43, other: 'Speedup: 5.0× (Eliminated: 225.8 ms)'})"
+            <circle cx="796.7" cy="279.4" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 KV Cache', domain: 'Latency: 58.28 ms', step: 'With KV: 58.28 ms vs Without KV: 281.16 ms', dur_ms: 58.28, other: 'Speedup: 4.8× (Eliminated: 222.9 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="796.7" y="270.5" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">56.4</text>
+            <text x="796.7" y="269.4" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.3</text>
             <text x="796.7" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1500</text>
         
-            <circle cx="917.8" cy="281.1" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1750 KV Cache', domain: 'Latency: 55.42 ms', step: 'With KV: 55.42 ms vs Without KV: 343.40 ms', dur_ms: 55.42, other: 'Speedup: 6.2× (Eliminated: 288.0 ms)'})"
+            <circle cx="917.8" cy="279.1" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 KV Cache', domain: 'Latency: 58.82 ms', step: 'With KV: 58.82 ms vs Without KV: 345.22 ms', dur_ms: 58.82, other: 'Speedup: 5.9× (Eliminated: 286.4 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="917.8" y="271.1" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">55.4</text>
+            <text x="917.8" y="269.1" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.8</text>
             <text x="917.8" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#1750</text>
         
-            <circle cx="1038.9" cy="273.4" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2000 KV Cache', domain: 'Latency: 68.01 ms', step: 'With KV: 68.01 ms vs Without KV: 415.10 ms', dur_ms: 68.01, other: 'Speedup: 6.1× (Eliminated: 347.1 ms)'})"
+            <circle cx="1038.9" cy="279.8" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 KV Cache', domain: 'Latency: 57.54 ms', step: 'With KV: 57.54 ms vs Without KV: 416.27 ms', dur_ms: 57.54, other: 'Speedup: 7.2× (Eliminated: 358.7 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1038.9" y="263.4" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">68.0</text>
+            <text x="1038.9" y="269.8" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">57.5</text>
             <text x="1038.9" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#2000</text>
         
-            <circle cx="1160.0" cy="281.6" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2047 KV Cache', domain: 'Latency: 54.61 ms', step: 'With KV: 54.61 ms vs Without KV: 407.06 ms', dur_ms: 54.61, other: 'Speedup: 7.5× (Eliminated: 352.4 ms)'})"
+            <circle cx="1160.0" cy="279.3" r="5" fill="#10b981" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 KV Cache', domain: 'Latency: 58.49 ms', step: 'With KV: 58.49 ms vs Without KV: 407.78 ms', dur_ms: 58.49, other: 'Speedup: 7.0× (Eliminated: 349.3 ms)'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1160.0" y="271.6" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">54.6</text>
+            <text x="1160.0" y="269.3" text-anchor="middle" fill="#34d399" font-weight="700" font-size="10">58.5</text>
             <text x="1160.0" y="335" text-anchor="middle" fill="#94a3b8" font-size="11">#2047</text>
         
 
@@ -1183,119 +1183,119 @@
                 </linearGradient>
             </defs>
             <line x1="70" y1="275.0" x2="1160" y2="275.0" class="grid-line" /><text x="60" y="279.0" text-anchor="end" fill="#94a3b8" font-size="11">0%</text><line x1="70" y1="228.0" x2="1160" y2="228.0" class="grid-line" /><text x="60" y="232.0" text-anchor="end" fill="#94a3b8" font-size="11">20%</text><line x1="70" y1="181.0" x2="1160" y2="181.0" class="grid-line" /><text x="60" y="185.0" text-anchor="end" fill="#94a3b8" font-size="11">40%</text><line x1="70" y1="134.0" x2="1160" y2="134.0" class="grid-line" /><text x="60" y="138.0" text-anchor="end" fill="#94a3b8" font-size="11">60%</text><line x1="70" y1="87.0" x2="1160" y2="87.0" class="grid-line" /><text x="60" y="91.0" text-anchor="end" fill="#94a3b8" font-size="11">80%</text><line x1="70" y1="40.0" x2="1160" y2="40.0" class="grid-line" /><text x="60" y="44.0" text-anchor="end" fill="#94a3b8" font-size="11">100%</text>
-            <polygon points="70,275 70.0,242.8 191.1,229.6 312.2,225.4 433.3,228.7 554.4,226.1 675.6,226.6 796.7,225.2 917.8,224.2 1038.9,232.9 1160.0,222.1 1160,275" fill="url(#duty2Grad)" />
-            <polyline points="70.0,271.5 191.1,201.4 312.2,99.0 433.3,54.1 554.4,48.5 675.6,45.4 796.7,46.1 917.8,44.5 1038.9,43.3 1160.0,43.3" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,3" />
-            <polyline points="70.0,242.8 191.1,229.6 312.2,225.4 433.3,228.7 554.4,226.1 675.6,226.6 796.7,225.2 917.8,224.2 1038.9,232.9 1160.0,222.1" fill="none" stroke="#38bdf8" stroke-width="3" />
+            <polygon points="70,275 70.0,234.6 191.1,231.3 312.2,234.3 433.3,228.0 554.4,226.8 675.6,227.8 796.7,226.8 917.8,227.1 1038.9,225.4 1160.0,225.7 1160,275" fill="url(#duty2Grad)" />
+            <polyline points="70.0,227.5 191.1,199.1 312.2,102.0 433.3,52.5 554.4,47.5 675.6,45.9 796.7,46.1 917.8,44.2 1038.9,43.8 1160.0,43.5" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,3" />
+            <polyline points="70.0,234.6 191.1,231.3 312.2,234.3 433.3,228.0 554.4,226.8 675.6,227.8 796.7,226.8 917.8,227.1 1038.9,225.4 1160.0,225.7" fill="none" stroke="#38bdf8" stroke-width="3" />
             
-            <circle cx="70.0" cy="271.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #0 Naive Duty Cycle', domain: 'Active GPU: 1.5%', step: 'Without KV GPU: 12.56 ms | Without KV CPU Gap: 819.18 ms', dur_ms: 12.56000000000006, other: 'With KV Duty: 13.7%'})"
+            <circle cx="70.0" cy="227.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 Naive Duty Cycle', domain: 'Active GPU: 20.2%', step: 'Without KV GPU: 12.57 ms | Without KV CPU Gap: 49.80 ms', dur_ms: 12.57, other: 'With KV Duty: 17.2%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="70.0" y="261.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">1.5%</text>
+            <text x="70.0" y="217.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">20.2%</text>
         
-            <circle cx="191.1" cy="201.4" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #250 Naive Duty Cycle', domain: 'Active GPU: 31.3%', step: 'Without KV GPU: 19.46 ms | Without KV CPU Gap: 42.82 ms', dur_ms: 19.46, other: 'With KV Duty: 19.3%'})"
+            <circle cx="191.1" cy="199.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 Naive Duty Cycle', domain: 'Active GPU: 32.3%', step: 'Without KV GPU: 19.36 ms | Without KV CPU Gap: 40.63 ms', dur_ms: 19.36, other: 'With KV Duty: 18.6%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="191.1" y="191.4" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">31.3%</text>
+            <text x="191.1" y="189.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">32.3%</text>
         
-            <circle cx="312.2" cy="99.0" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #500 Naive Duty Cycle', domain: 'Active GPU: 74.9%', step: 'Without KV GPU: 42.70 ms | Without KV CPU Gap: 14.29 ms', dur_ms: 42.7, other: 'With KV Duty: 21.1%'})"
+            <circle cx="312.2" cy="102.0" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 Naive Duty Cycle', domain: 'Active GPU: 73.6%', step: 'Without KV GPU: 42.66 ms | Without KV CPU Gap: 15.32 ms', dur_ms: 42.66, other: 'With KV Duty: 17.3%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="312.2" y="89.0" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">74.9%</text>
+            <text x="312.2" y="92.0" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">73.6%</text>
         
-            <circle cx="433.3" cy="54.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #750 Naive Duty Cycle', domain: 'Active GPU: 94.0%', step: 'Without KV GPU: 81.38 ms | Without KV CPU Gap: 5.22 ms', dur_ms: 81.38, other: 'With KV Duty: 19.7%'})"
+            <circle cx="433.3" cy="52.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 Naive Duty Cycle', domain: 'Active GPU: 94.7%', step: 'Without KV GPU: 80.11 ms | Without KV CPU Gap: 4.46 ms', dur_ms: 80.11, other: 'With KV Duty: 20.0%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="433.3" y="44.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">94.0%</text>
+            <text x="433.3" y="42.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">94.7%</text>
         
-            <circle cx="554.4" cy="48.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1000 Naive Duty Cycle', domain: 'Active GPU: 96.4%', step: 'Without KV GPU: 145.72 ms | Without KV CPU Gap: 5.40 ms', dur_ms: 145.72, other: 'With KV Duty: 20.8%'})"
+            <circle cx="554.4" cy="47.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 Naive Duty Cycle', domain: 'Active GPU: 96.8%', step: 'Without KV GPU: 145.74 ms | Without KV CPU Gap: 4.81 ms', dur_ms: 145.74, other: 'With KV Duty: 20.5%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="554.4" y="38.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">96.4%</text>
+            <text x="554.4" y="37.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">96.8%</text>
         
-            <circle cx="675.6" cy="45.4" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1250 Naive Duty Cycle', domain: 'Active GPU: 97.7%', step: 'Without KV GPU: 211.35 ms | Without KV CPU Gap: 4.93 ms', dur_ms: 211.35, other: 'With KV Duty: 20.6%'})"
+            <circle cx="675.6" cy="45.9" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 Naive Duty Cycle', domain: 'Active GPU: 97.5%', step: 'Without KV GPU: 208.30 ms | Without KV CPU Gap: 5.32 ms', dur_ms: 208.3, other: 'With KV Duty: 20.1%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="675.6" y="35.4" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">97.7%</text>
+            <text x="675.6" y="35.9" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">97.5%</text>
         
             <circle cx="796.7" cy="46.1" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1500 Naive Duty Cycle', domain: 'Active GPU: 97.4%', step: 'Without KV GPU: 275.05 ms | Without KV CPU Gap: 7.20 ms', dur_ms: 275.05, other: 'With KV Duty: 21.2%'})"
+                onmousemove="showTooltip(event, {name: 'Step #1500 Naive Duty Cycle', domain: 'Active GPU: 97.4%', step: 'Without KV GPU: 273.78 ms | Without KV CPU Gap: 7.38 ms', dur_ms: 273.78000000000003, other: 'With KV Duty: 20.5%'})"
                 onmouseleave="hideTooltip()" />
             <text x="796.7" y="36.1" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">97.4%</text>
         
-            <circle cx="917.8" cy="44.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1750 Naive Duty Cycle', domain: 'Active GPU: 98.1%', step: 'Without KV GPU: 336.98 ms | Without KV CPU Gap: 6.42 ms', dur_ms: 336.97999999999996, other: 'With KV Duty: 21.6%'})"
+            <circle cx="917.8" cy="44.2" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 Naive Duty Cycle', domain: 'Active GPU: 98.2%', step: 'Without KV GPU: 338.98 ms | Without KV CPU Gap: 6.24 ms', dur_ms: 338.98, other: 'With KV Duty: 20.4%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="917.8" y="34.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.1%</text>
+            <text x="917.8" y="34.2" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.2%</text>
         
-            <circle cx="1038.9" cy="43.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2000 Naive Duty Cycle', domain: 'Active GPU: 98.6%', step: 'Without KV GPU: 409.09 ms | Without KV CPU Gap: 6.01 ms', dur_ms: 409.09000000000003, other: 'With KV Duty: 17.9%'})"
+            <circle cx="1038.9" cy="43.8" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 Naive Duty Cycle', domain: 'Active GPU: 98.4%', step: 'Without KV GPU: 409.74 ms | Without KV CPU Gap: 6.53 ms', dur_ms: 409.74, other: 'With KV Duty: 21.1%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1038.9" y="33.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.6%</text>
+            <text x="1038.9" y="33.8" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.4%</text>
         
-            <circle cx="1160.0" cy="43.3" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2047 Naive Duty Cycle', domain: 'Active GPU: 98.6%', step: 'Without KV GPU: 401.22 ms | Without KV CPU Gap: 5.84 ms', dur_ms: 401.22, other: 'With KV Duty: 22.5%'})"
+            <circle cx="1160.0" cy="43.5" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 Naive Duty Cycle', domain: 'Active GPU: 98.5%', step: 'Without KV GPU: 401.58 ms | Without KV CPU Gap: 6.20 ms', dur_ms: 401.58, other: 'With KV Duty: 21.0%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1160.0" y="33.3" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.6%</text>
+            <text x="1160.0" y="33.5" text-anchor="middle" fill="#f87171" font-weight="700" font-size="10">98.5%</text>
         
             
-            <circle cx="70.0" cy="242.8" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #0 KV Cache Duty Cycle', domain: 'Active GPU: 13.7%', step: 'With KV GPU: 11.96 ms | With KV CPU Gap: 75.41 ms', dur_ms: 11.960000000000008, other: 'Without KV Duty: 1.5%'})"
+            <circle cx="70.0" cy="234.6" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #0 KV Cache Duty Cycle', domain: 'Active GPU: 17.2%', step: 'With KV GPU: 11.98 ms | With KV CPU Gap: 57.54 ms', dur_ms: 11.979999999999997, other: 'Without KV Duty: 20.2%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="70.0" y="232.8" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">13.7%</text>
+            <text x="70.0" y="224.6" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">17.2%</text>
             <text x="70.0" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#0</text>
         
-            <circle cx="191.1" cy="229.6" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #250 KV Cache Duty Cycle', domain: 'Active GPU: 19.3%', step: 'With KV GPU: 11.30 ms | With KV CPU Gap: 47.21 ms', dur_ms: 11.299999999999997, other: 'Without KV Duty: 31.3%'})"
+            <circle cx="191.1" cy="231.3" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #250 KV Cache Duty Cycle', domain: 'Active GPU: 18.6%', step: 'With KV GPU: 11.29 ms | With KV CPU Gap: 49.30 ms', dur_ms: 11.290000000000006, other: 'Without KV Duty: 32.3%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="191.1" y="219.6" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">19.3%</text>
+            <text x="191.1" y="221.3" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">18.6%</text>
             <text x="191.1" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#250</text>
         
-            <circle cx="312.2" cy="225.4" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #500 KV Cache Duty Cycle', domain: 'Active GPU: 21.1%', step: 'With KV GPU: 11.45 ms | With KV CPU Gap: 42.86 ms', dur_ms: 11.450000000000003, other: 'Without KV Duty: 74.9%'})"
+            <circle cx="312.2" cy="234.3" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #500 KV Cache Duty Cycle', domain: 'Active GPU: 17.3%', step: 'With KV GPU: 11.44 ms | With KV CPU Gap: 54.51 ms', dur_ms: 11.440000000000005, other: 'Without KV Duty: 73.6%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="312.2" y="215.4" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.1%</text>
+            <text x="312.2" y="224.3" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">17.3%</text>
             <text x="312.2" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#500</text>
         
-            <circle cx="433.3" cy="228.7" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #750 KV Cache Duty Cycle', domain: 'Active GPU: 19.7%', step: 'With KV GPU: 11.52 ms | With KV CPU Gap: 47.04 ms', dur_ms: 11.520000000000003, other: 'Without KV Duty: 94.0%'})"
+            <circle cx="433.3" cy="228.0" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #750 KV Cache Duty Cycle', domain: 'Active GPU: 20.0%', step: 'With KV GPU: 11.53 ms | With KV CPU Gap: 45.97 ms', dur_ms: 11.530000000000001, other: 'Without KV Duty: 94.7%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="433.3" y="218.7" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">19.7%</text>
+            <text x="433.3" y="218.0" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.0%</text>
             <text x="433.3" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#750</text>
         
-            <circle cx="554.4" cy="226.1" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1000 KV Cache Duty Cycle', domain: 'Active GPU: 20.8%', step: 'With KV GPU: 11.71 ms | With KV CPU Gap: 44.61 ms', dur_ms: 11.71, other: 'Without KV Duty: 96.4%'})"
+            <circle cx="554.4" cy="226.8" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1000 KV Cache Duty Cycle', domain: 'Active GPU: 20.5%', step: 'With KV GPU: 11.69 ms | With KV CPU Gap: 45.47 ms', dur_ms: 11.689999999999998, other: 'Without KV Duty: 96.8%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="554.4" y="216.1" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.8%</text>
+            <text x="554.4" y="216.8" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.5%</text>
             <text x="554.4" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1000</text>
         
-            <circle cx="675.6" cy="226.6" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1250 KV Cache Duty Cycle', domain: 'Active GPU: 20.6%', step: 'With KV GPU: 11.82 ms | With KV CPU Gap: 45.52 ms', dur_ms: 11.82, other: 'Without KV Duty: 97.7%'})"
+            <circle cx="675.6" cy="227.8" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1250 KV Cache Duty Cycle', domain: 'Active GPU: 20.1%', step: 'With KV GPU: 11.80 ms | With KV CPU Gap: 46.84 ms', dur_ms: 11.799999999999997, other: 'Without KV Duty: 97.5%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="675.6" y="216.6" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.6%</text>
+            <text x="675.6" y="217.8" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.1%</text>
             <text x="675.6" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1250</text>
         
-            <circle cx="796.7" cy="225.2" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1500 KV Cache Duty Cycle', domain: 'Active GPU: 21.2%', step: 'With KV GPU: 11.96 ms | With KV CPU Gap: 44.47 ms', dur_ms: 11.96, other: 'Without KV Duty: 97.4%'})"
+            <circle cx="796.7" cy="226.8" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1500 KV Cache Duty Cycle', domain: 'Active GPU: 20.5%', step: 'With KV GPU: 11.95 ms | With KV CPU Gap: 46.33 ms', dur_ms: 11.950000000000003, other: 'Without KV Duty: 97.4%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="796.7" y="215.2" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.2%</text>
+            <text x="796.7" y="216.8" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.5%</text>
             <text x="796.7" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1500</text>
         
-            <circle cx="917.8" cy="224.2" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #1750 KV Cache Duty Cycle', domain: 'Active GPU: 21.6%', step: 'With KV GPU: 12.00 ms | With KV CPU Gap: 43.42 ms', dur_ms: 12.0, other: 'Without KV Duty: 98.1%'})"
+            <circle cx="917.8" cy="227.1" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #1750 KV Cache Duty Cycle', domain: 'Active GPU: 20.4%', step: 'With KV GPU: 11.99 ms | With KV CPU Gap: 46.83 ms', dur_ms: 11.990000000000002, other: 'Without KV Duty: 98.2%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="917.8" y="214.2" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.6%</text>
+            <text x="917.8" y="217.1" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">20.4%</text>
             <text x="917.8" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#1750</text>
         
-            <circle cx="1038.9" cy="232.9" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2000 KV Cache Duty Cycle', domain: 'Active GPU: 17.9%', step: 'With KV GPU: 12.17 ms | With KV CPU Gap: 55.84 ms', dur_ms: 12.170000000000002, other: 'Without KV Duty: 98.6%'})"
+            <circle cx="1038.9" cy="225.4" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2000 KV Cache Duty Cycle', domain: 'Active GPU: 21.1%', step: 'With KV GPU: 12.17 ms | With KV CPU Gap: 45.37 ms', dur_ms: 12.170000000000002, other: 'Without KV Duty: 98.4%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1038.9" y="222.9" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">17.9%</text>
+            <text x="1038.9" y="215.4" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.1%</text>
             <text x="1038.9" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#2000</text>
         
-            <circle cx="1160.0" cy="222.1" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
-                onmousemove="showTooltip(event, {name: 'Step #2047 KV Cache Duty Cycle', domain: 'Active GPU: 22.5%', step: 'With KV GPU: 12.28 ms | With KV CPU Gap: 42.33 ms', dur_ms: 12.280000000000001, other: 'Without KV Duty: 98.6%'})"
+            <circle cx="1160.0" cy="225.7" r="5" fill="#38bdf8" stroke="#ffffff" stroke-width="2" style="cursor:pointer;"
+                onmousemove="showTooltip(event, {name: 'Step #2047 KV Cache Duty Cycle', domain: 'Active GPU: 21.0%', step: 'With KV GPU: 12.26 ms | With KV CPU Gap: 46.23 ms', dur_ms: 12.260000000000005, other: 'Without KV Duty: 98.5%'})"
                 onmouseleave="hideTooltip()" />
-            <text x="1160.0" y="212.1" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">22.5%</text>
+            <text x="1160.0" y="215.7" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="10">21.0%</text>
             <text x="1160.0" y="295" text-anchor="middle" fill="#94a3b8" font-size="11">#2047</text>
         
 

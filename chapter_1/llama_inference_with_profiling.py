@@ -413,13 +413,33 @@ def main():
     tok_repo = args.model_path if os.path.exists(args.model_path) else ("unsloth/Llama-3.2-1B-Instruct" if "meta-llama" in args.model_path and "HF_TOKEN" not in os.environ else args.model_path)
     tokenizer = AutoTokenizer.from_pretrained(tok_repo)
 
-    # 4. Warmup
+    # 4. Warmup (Model, Sampling, and PyTorch Profiler / CUPTI context)
     if args.profile and args.warmup and args.device == "cuda":
-        print("[*] Performing 1-step model warmup to eliminate CUDA context overhead...")
+        print("[*] Performing comprehensive model & profiler warmup to eliminate CUDA context and CUPTI overhead...")
         with torch.no_grad():
-            dummy = torch.tensor([[1, 2]], device=args.device)
-            _ = model(dummy)
+            if hasattr(tokenizer, "apply_chat_template"):
+                warm_msgs = [{"role": "user", "content": args.prompt}]
+                warm_prompt = tokenizer.apply_chat_template(warm_msgs, tokenize=False, add_generation_prompt=True)
+            else:
+                warm_prompt = args.prompt
+            warm_ids = tokenizer(warm_prompt, return_tensors="pt")["input_ids"].to(args.device)
+
+            # Un-profiled warmup passes for cuBLAS heuristics and sampling kernel
+            for _ in range(2):
+                dummy_logits = model(warm_ids)
+                _ = torch.argmax(dummy_logits[:, -1, :], dim=-1, keepdim=True)
             torch.cuda.synchronize()
+
+            # Profiled warmup pass to initialize CUPTI and Kineto activity buffers
+            with torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                record_shapes=True,
+                profile_memory=True,
+            ):
+                dummy_logits = model(warm_ids)
+                _ = torch.argmax(dummy_logits[:, -1, :], dim=-1, keepdim=True)
+            torch.cuda.synchronize()
+        print("[*] Warmup complete.")
 
     # 5. Generation with Sampled Profiling
     os.makedirs(args.profile_output_dir, exist_ok=True)
