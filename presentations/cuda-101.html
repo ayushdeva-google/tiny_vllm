@@ -313,13 +313,102 @@
   </section>
 
   <!-- ============ PART 2 ============ -->
-  <!-- 6 BLOCK LIMIT -->
+  <!-- WARPS / SIMT concept -->
+  <section class="slide" data-title="Warps &amp; SIMT">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · The execution unit</div>
+      <h2>Warps &amp; SIMT</h2>
+      <p class="lede">Zoom inside one SM. You write code for a single thread, but the hardware executes a
+        <strong>warp</strong> — 32 threads — together. One instruction, 32 threads:
+        <em>Single Instruction, Multiple Threads.</em></p>
+      <div class="grid2" style="margin-top:18px;align-items:start">
+        <div class="card">
+          <h3>How 32 cores read 32 different values</h3>
+          <p>Each thread has a hardwired register holding its own <code class="k-v">threadIdx.x</code>.
+            When you write <code>A[threadIdx.x]</code>, the SM issues one <code class="k-a">LDG</code>
+            instruction — but core 0 computes address <code>A[0]</code>, core 1 computes <code>A[1]</code>,
+            and so on. One instruction, 32 addresses.</p>
+        </div>
+        <div class="card">
+          <span class="tag">common instructions</span>
+          <ul class="clean amber" style="margin-top:12px">
+            <li><code class="k-a">LDG</code> / <code class="k-a">STG</code> — load / store global memory</li>
+            <li><code class="k">FADD</code>, <code class="k">FMUL</code> — float add, multiply</li>
+            <li><code class="k">FFMA</code> — fused multiply-add (one rounded op)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout violet" style="margin-top:18px">
+        <strong>Warp shuffle:</strong> because a warp runs in lockstep,
+        <code class="k-v">__shfl_down_sync</code> passes values directly between the 32 registers in ~5
+        cycles — no trip through shared memory. We'll use this in RMSNorm.
+      </div>
+    </div>
+  </section>
+
+  <!-- WARP WALKTHROUGH (stepper) -->
+  <section class="slide" data-title="Warp walkthrough">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · The execution unit</div>
+      <h2>A Warp at Work: Adding a Vector of 64</h2>
+      <p class="lede">64 elements need 64 threads — exactly <strong>2 warps</strong>. Step through the six
+        instructions the SM issues to compute <code>C = A + B</code>.</p>
+      <div class="card" style="margin-top:16px">
+        <div id="simtViz"></div>
+        <div class="ctrls">
+          <button class="btn ghost" id="simtPrev">← Back</button>
+          <button class="btn" id="simtNext">Next instruction →</button>
+          <span class="note" id="simtOut">Step 0 / 6 · ready · 64 elements = 2 warps of 32</span>
+        </div>
+      </div>
+      <p class="note" style="margin-top:12px">Each warp adds its 32 pairs in a single
+        <code class="k">FADD</code> — the whole vector is done in six warp-instructions.</p>
+    </div>
+  </section>
+
+  <!-- LATENCY HIDING -->
+  <section class="slide" data-title="Latency hiding">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 2 · Why so many threads</div>
+      <h2>128 Cores, ~1,536 Threads: Latency Hiding</h2>
+      <p class="lede">An SM has only <strong>128 physical cores</strong>, yet keeps up to
+        <strong>~1,536 threads</strong> resident at once. Why so many? A memory load costs ~200 cycles — so
+        instead of stalling, the SM switches the cores to another ready thread.</p>
+      <div class="grid2" style="margin-top:18px;align-items:start">
+        <div class="card">
+          <h3>Why the switch is free</h3>
+          <p style="margin-bottom:8px">Every thread's registers already sit in the SM's register file.
+            Nothing has to be saved or loaded to switch threads — so a context switch costs
+            <strong>zero cycles</strong>.</p>
+          <p>Thread 0 issues a load and goes to wait; the cores immediately run Thread 1, then Thread 2…
+            By the time Thread 0's data arrives, the cores come back to it. The 128 ALUs stay busy ~100%.</p>
+        </div>
+        <div class="card">
+          <span class="tag">the trade</span>
+          <ul class="clean amber" style="margin-top:12px">
+            <li><span class="k-a">Registers</span> are cheap to switch but limited — 65,536 per SM</li>
+            <li>Use fewer registers per thread → more threads fit → more latency hidden</li>
+            <li>This is <em>occupancy</em>: the lever every CUDA optimizer tunes</li>
+          </ul>
+          <div class="divider"></div>
+          <p class="note">Core = calculator (no memory). Thread = owns the registers.</p>
+        </div>
+      </div>
+      <div class="callout green" style="margin-top:18px">
+        <strong>Takeaway:</strong> you <em>want</em> to flood the SM with threads. Next: how CUDA lets you
+        launch them — the <span class="k">block</span>.
+      </div>
+    </div>
+  </section>
+
+  <!-- BLOCK LIMIT -->
   <section class="slide" data-title="The 1024 cap">
     <div class="wrap">
-      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <div class="eyebrow amber">Part 2 · The programming model</div>
       <h2>The Block, and Why It Caps at 1024</h2>
-      <p class="lede">A block is a team that cooperates through shared memory and
-        <code class="k">__syncthreads()</code> — so the whole team must fit on one SM at the same time.</p>
+      <p class="lede">CUDA's way to launch threads is the <strong>block</strong> — a team that cooperates
+        through shared memory and <code class="k">__syncthreads()</code>. The whole team must fit on one SM
+        at once, and that constraint is exactly why blocks cap at 1024.</p>
       <div class="grid2" style="margin-top:18px;align-items:start">
         <div class="card">
           <h3>The deadlock the cap prevents</h3>
@@ -347,10 +436,10 @@
     </div>
   </section>
 
-  <!-- 7 GRID-STRIDE -->
+  <!-- GRID-STRIDE -->
   <section class="slide" data-title="Grid-stride">
     <div class="wrap">
-      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <div class="eyebrow amber">Part 2 · The programming model</div>
       <h2>More Data Than Threads? Loop.</h2>
       <p class="lede">2048 elements but only 1024 threads. You don't ask for more threads — each thread
         processes several elements in sequence: a <strong>grid-stride loop</strong>.</p>
@@ -387,92 +476,10 @@
     </div>
   </section>
 
-  <!-- 8 LATENCY HIDING -->
-  <section class="slide" data-title="Latency hiding">
-    <div class="wrap">
-      <div class="eyebrow amber">Part 2 · Core concepts</div>
-      <h2>Latency Hiding &amp; the Free Context Switch</h2>
-      <p class="lede">An SM has only 128 physical cores but runs 1024 threads. A memory load costs
-        ~200 cycles — so instead of stalling, the SM switches the cores to another ready thread.</p>
-      <div class="grid2" style="margin-top:18px;align-items:start">
-        <div class="card">
-          <h3>Why the switch is free</h3>
-          <p style="margin-bottom:8px">Every thread's registers already sit in the SM's register file.
-            Nothing has to be saved or loaded to switch threads — so a context switch costs
-            <strong>zero cycles</strong>.</p>
-          <p>Thread 0 issues a load and goes to wait; the cores immediately run Thread 1, then Thread 2…
-            By the time Thread 0's data arrives, the cores come back to it. The 128 ALUs stay busy ~100%.</p>
-        </div>
-        <div class="card">
-          <span class="tag">the trade</span>
-          <ul class="clean amber" style="margin-top:12px">
-            <li><span class="k-a">Registers</span> are cheap to switch but limited — 65,536 per SM</li>
-            <li>Use fewer registers per thread → more threads fit → more latency hidden</li>
-            <li>This is <em>occupancy</em>: the lever every CUDA optimizer tunes</li>
-          </ul>
-          <div class="divider"></div>
-          <p class="note">Core = calculator (no memory). Thread = owns the registers.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 9 WARPS / SIMT concept -->
-  <section class="slide" data-title="Warps &amp; SIMT">
-    <div class="wrap">
-      <div class="eyebrow amber">Part 2 · Core concepts</div>
-      <h2>Warps &amp; SIMT</h2>
-      <p class="lede">You write code for one thread, but the hardware executes a <strong>warp</strong> — 32
-        threads — together. One instruction, 32 threads: <em>Single Instruction, Multiple Threads.</em></p>
-      <div class="grid2" style="margin-top:18px;align-items:start">
-        <div class="card">
-          <h3>How 32 cores read 32 different values</h3>
-          <p>Each thread has a hardwired register holding its own <code class="k-v">threadIdx.x</code>.
-            When you write <code>A[threadIdx.x]</code>, the SM issues one <code class="k-a">LDG</code>
-            instruction — but core 0 computes address <code>A[0]</code>, core 1 computes <code>A[1]</code>,
-            and so on. One instruction, 32 addresses.</p>
-        </div>
-        <div class="card">
-          <span class="tag">common instructions</span>
-          <ul class="clean amber" style="margin-top:12px">
-            <li><code class="k-a">LDG</code> / <code class="k-a">STG</code> — load / store global memory</li>
-            <li><code class="k">FADD</code>, <code class="k">FMUL</code> — float add, multiply</li>
-            <li><code class="k">FFMA</code> — fused multiply-add (one rounded op)</li>
-          </ul>
-        </div>
-      </div>
-      <div class="callout violet" style="margin-top:18px">
-        <strong>Warp shuffle:</strong> because a warp runs in lockstep,
-        <code class="k-v">__shfl_down_sync</code> passes values directly between the 32 registers in ~5
-        cycles — no trip through shared memory. We'll use this in RMSNorm.
-      </div>
-    </div>
-  </section>
-
-  <!-- 10 WARP WALKTHROUGH (stepper) -->
-  <section class="slide" data-title="Warp walkthrough">
-    <div class="wrap">
-      <div class="eyebrow amber">Part 2 · Walkthrough</div>
-      <h2>A Warp at Work: Adding a Vector of 64</h2>
-      <p class="lede">64 elements need 64 threads — exactly <strong>2 warps</strong>. Step through the six
-        instructions the SM issues to compute <code>C = A + B</code>.</p>
-      <div class="card" style="margin-top:16px">
-        <div id="simtViz"></div>
-        <div class="ctrls">
-          <button class="btn ghost" id="simtPrev">← Back</button>
-          <button class="btn" id="simtNext">Next instruction →</button>
-          <span class="note" id="simtOut">Step 0 / 6 · ready · 64 elements = 2 warps of 32</span>
-        </div>
-      </div>
-      <p class="note" style="margin-top:12px">Each warp adds its 32 pairs in a single
-        <code class="k">FADD</code> — the whole vector is done in six warp-instructions.</p>
-    </div>
-  </section>
-
-  <!-- 11 SCHEDULING -->
+  <!-- SCHEDULING -->
   <section class="slide" data-title="Scheduling">
     <div class="wrap">
-      <div class="eyebrow amber">Part 2 · Core concepts</div>
+      <div class="eyebrow amber">Part 2 · The programming model</div>
       <h2>Kernel Scheduling: The Hardware Queue</h2>
       <p class="lede">Launch a grid of 2,048 blocks on 58 SMs. The GigaThread Engine fills all 58, and the
         remaining blocks wait in a hardware queue.</p>
@@ -533,6 +540,41 @@
         Each row's math is independent, so each row is its own block on its own SM — perfect parallelism,
         no cross-block communication.
       </div>
+    </div>
+  </section>
+
+  <!-- BASELINE (native PyTorch) -->
+  <section class="slide" data-title="Naive baseline">
+    <div class="wrap">
+      <div class="eyebrow amber">Part 3 · The baseline</div>
+      <h2>The Naive Version: Eager PyTorch</h2>
+      <p class="lede">This is correct, readable, and slow. Every operation on the input is a
+        <strong>separate CUDA kernel launch</strong> that reads from and writes back to VRAM.</p>
+      <div class="grid2" style="margin-top:16px;align-items:start">
+<pre class="code"><span class="kw">class</span> <span class="fn">RMSNorm</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):
+        <span class="cm"># fp32 for numerical stability</span>
+        v = x.<span class="fn">float</span>().<span class="fn">pow</span>(2) \
+              .<span class="fn">mean</span>(-1, keepdim=<span class="kw">True</span>)
+        xn = x * torch.<span class="fn">rsqrt</span>(v + self.eps)
+        <span class="kw">return</span> self.weight * xn</pre>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card" style="padding:14px 16px">
+            <h3 style="font-size:15px">One line ≠ one op</h3>
+            <p>Each of <code class="k-a">pow</code>, <code class="k-a">mean</code>,
+              <code class="k-a">add</code>, <code class="k-a">rsqrt</code>, and the two
+              <code class="k-a">mul</code>s launches its own kernel — <strong>~6 launches</strong> for a
+              single normalization.</p>
+          </div>
+          <div class="callout">
+            <strong>Two taxes:</strong> <em>launch overhead</em> (the CPU commands the GPU once per op) and
+            the <em>memory wall</em> (every intermediate is written to VRAM, then immediately read back).
+            The math is trivial; the data movement is the cost.
+          </div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px">Source: <code>chapter_1/llama_inference.py</code> · next, we
+        fuse all six ops into one kernel — the four phases on the silicon.</p>
     </div>
   </section>
 
@@ -800,7 +842,7 @@
     </div>
   </section>
 
-  <!-- 20 RESULTS -->
+  <!-- RESULTS -->
   <section class="slide" data-title="Results">
     <div class="wrap">
       <div class="eyebrow">The payoff · RMSNorm on the L4</div>
@@ -954,7 +996,7 @@
   };
 
   // Warp walkthrough stepper slide
-  inits[8]=function(){
+  inits[5]=function(){
     var viz=document.getElementById('simtViz');
     [0,1].forEach(function(w){
       var row=document.createElement('div'); row.className='warpRow';
