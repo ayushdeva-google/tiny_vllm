@@ -131,39 +131,7 @@
   </section>
 
   <!-- ============ PART 1 ============ -->
-  <!-- 2 WHY GPUs -->
-  <section class="slide" data-title="Why GPUs">
-    <div class="wrap">
-      <div class="eyebrow">Part 1 · What a GPU is</div>
-      <h2>Latency vs Throughput</h2>
-      <p class="lede">A CPU is built to finish a few threads as fast as possible. A GPU is built to keep
-        thousands of threads in flight at once — ideal for the parallel matrix math of deep learning.</p>
-      <div class="grid2" style="margin-top:22px">
-        <div class="card">
-          <span class="tag" style="color:var(--amber);border-color:var(--amber)">CPU · low latency</span>
-          <ul class="clean amber">
-            <li>A few large, fast cores</li>
-            <li>Deep caches, branch prediction, out-of-order execution</li>
-            <li>Optimized to race a <strong>single</strong> task to the finish line</li>
-          </ul>
-        </div>
-        <div class="card">
-          <span class="tag" style="color:var(--green);border-color:var(--green)">GPU · high throughput</span>
-          <ul class="clean">
-            <li>Thousands of small, simple cores</li>
-            <li>Hides slow memory by juggling many threads</li>
-            <li>Optimized to keep <strong>every lane</strong> busy, all the time</li>
-          </ul>
-        </div>
-      </div>
-      <div class="callout cyan" style="margin-top:18px">
-        The same 64-element vector add: a CPU walks it in a handful of sequential passes; a GPU assigns
-        64 threads and does it in essentially one.
-      </div>
-    </div>
-  </section>
-
-  <!-- 3 WHOLE-CHIP ARCHITECTURE -->
+  <!-- 2 WHOLE-CHIP ARCHITECTURE -->
   <section class="slide" data-title="GPU architecture">
     <div class="wrap">
       <div class="eyebrow">Part 1 · Physical layout</div>
@@ -832,6 +800,55 @@
     </div>
   </section>
 
+  <!-- 20 RESULTS -->
+  <section class="slide" data-title="Results">
+    <div class="wrap">
+      <div class="eyebrow">The payoff · RMSNorm on the L4</div>
+      <h2>From Theory to <span style="color:var(--green)">7.2× Faster</span></h2>
+      <p class="lede">Same math, same GPU. A single fused CUDA kernel replaces PyTorch's chain of
+        eager ops — measured across the three RMSNorm calls per transformer step.</p>
+      <div class="grid2" style="margin-top:16px;align-items:stretch">
+        <div class="card">
+          <span class="tag" style="color:var(--amber);border-color:var(--amber)">🐢 Native PyTorch (eager)</span>
+          <div class="restable" style="margin-top:12px">
+            <div class="resrow"><span>RMSNorm · Attn</span><span>0.2794 ms</span></div>
+            <div class="resrow"><span>RMSNorm · FFN</span><span>0.2754 ms</span></div>
+            <div class="resrow"><span>RMSNorm · Final</span><span>0.0174 ms</span></div>
+            <div class="resrow total"><span>Total / step</span><span>~0.5722 ms</span></div>
+          </div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--green)">
+          <span class="tag" style="color:var(--green);border-color:var(--green)">🚀 CUDA fused kernel</span>
+          <div class="restable" style="margin-top:12px">
+            <div class="resrow"><span>RMSNorm · Attn</span><span>0.0386 ms</span></div>
+            <div class="resrow"><span>RMSNorm · FFN</span><span>0.0389 ms</span></div>
+            <div class="resrow"><span>RMSNorm · Final</span><span>0.0024 ms</span></div>
+            <div class="resrow total" style="color:var(--green)"><span>Total / step</span><span>~0.0799 ms</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="barrow">
+          <span class="barlbl">PyTorch</span>
+          <div class="bartrack"><div class="barfill" style="width:100%;background:var(--red)"></div></div>
+          <span class="barval">0.5722 ms</span>
+        </div>
+        <div class="barrow">
+          <span class="barlbl">CUDA</span>
+          <div class="bartrack"><div class="barfill" style="width:14%;background:var(--green)"></div></div>
+          <span class="barval" style="color:var(--green)">0.0799 ms</span>
+        </div>
+      </div>
+      <div class="callout green" style="margin-top:16px">
+        <strong>Why kernel fusion wins:</strong> eager PyTorch launches a separate kernel per op
+        (<code>pow</code>, <code>mean</code>, <code>rsqrt</code>, <code>mul</code>…), each writing a temp
+        tensor back to VRAM — launch overhead plus the memory wall. The fused kernel reads VRAM
+        <em>once</em> into registers &amp; shared memory, computes the whole RMSNorm on-chip, and writes
+        <em>once</em>. Exactly the four phases we just traced.
+      </div>
+    </div>
+  </section>
+
   <nav id="nav">
     <button class="navbtn" id="prev" aria-label="Previous slide">←</button>
     <div id="counter">01 / 15</div>
@@ -848,6 +865,18 @@
   pre.code .kw{color:var(--violet)}
   pre.code .fn{color:var(--cyan)}
   @media (max-width:720px){pre.code{font-size:11.5px}}
+  .restable{display:flex;flex-direction:column;gap:8px}
+  .resrow{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13.5px;
+    color:var(--muted);font-variant-numeric:tabular-nums}
+  .resrow.total{border-top:1px solid var(--line);padding-top:9px;margin-top:3px;
+    font-weight:600;color:var(--text)}
+  .barrow{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .barrow:last-child{margin-bottom:0}
+  .barlbl{font-family:var(--mono);font-size:12.5px;color:var(--muted);width:66px;flex-shrink:0}
+  .bartrack{flex:1;height:14px;border-radius:7px;background:var(--surface2);border:1px solid var(--line);overflow:hidden}
+  .barfill{height:100%;border-radius:6px}
+  .barval{font-family:var(--mono);font-size:12.5px;width:82px;text-align:right;flex-shrink:0;
+    color:var(--muted);font-variant-numeric:tabular-nums}
   .warpRow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .warpLabel{font-family:var(--mono);font-size:12px;color:var(--muted);width:60px;flex-shrink:0}
   .lane{flex:1;display:flex;gap:3px}
@@ -909,8 +938,8 @@
 
   var inits={};
 
-  // Slide 4: fill CUDA-core grid in SM diagram (static)
-  inits[3]=function(){
+  // SM diagram slide: fill CUDA-core grid (static)
+  inits[2]=function(){
     var g=document.getElementById('ccgrid');
     if(!g) return;
     var cols=16, rows=8, x0=32, y0=172, w=15.5, h=15, gap=1.2;
@@ -924,8 +953,8 @@
     }}
   };
 
-  // Slide 10: warp walkthrough stepper
-  inits[9]=function(){
+  // Warp walkthrough stepper slide
+  inits[8]=function(){
     var viz=document.getElementById('simtViz');
     [0,1].forEach(function(w){
       var row=document.createElement('div'); row.className='warpRow';
@@ -961,8 +990,8 @@
     render();
   };
 
-  // Slide 11: fill SM row (static)
-  inits[10]=function(){
+  // Scheduling slide: fill SM row (static)
+  inits[9]=function(){
     var g=document.getElementById('smrow'); if(!g)return;
     var svgns='http://www.w3.org/2000/svg';
     var cols=15, x0=480, y0=34, w=21, h=21, gap=2.6, count=58, i=0;
