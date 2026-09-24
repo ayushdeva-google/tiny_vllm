@@ -621,14 +621,35 @@ def main():
     tok_dir = os.path.dirname(files[0]) if files else args.model_path
     tokenizer = AutoTokenizer.from_pretrained(tok_dir, local_files_only=os.path.exists(tok_dir))
 
-    # Warmup
+    # 4. Model Warmup (Model, cuBLAS prompt shape heuristics, sampling kernel, and PyTorch Profiler / CUPTI context)
     if args.device == "cuda":
-        print("[*] Warming up CUDA...")
+        print("[*] Performing comprehensive model & profiler warmup to eliminate CUDA context and CUPTI overhead...")
         with torch.no_grad():
-            dummy = torch.tensor([[1]], device=args.device)
-            dummy_cache = KVCache(model.args.n_layers, 1, 16, model.args.n_kv_heads, model.args.head_dim, dtype=dtype, device=args.device)
-            _ = model(dummy, start_pos=0, kv_cache=dummy_cache)
+            warm_ids = tokenizer(args.prompt, return_tensors="pt")["input_ids"].to(args.device)
+            warm_seq_len = warm_ids.shape[-1]
+
+            dummy_cache = KVCache(
+                model.args.n_layers, 1, warm_seq_len + 16,
+                model.args.n_kv_heads, model.args.head_dim,
+                dtype=dtype, device=args.device,
+            )
+
+            # Un-profiled warmup passes for cuBLAS heuristics and sampling kernel
+            for _ in range(2):
+                dummy_logits = model(warm_ids, start_pos=0, kv_cache=dummy_cache)
+                _ = sample_next_token(dummy_logits, temperature=args.temperature, top_k=args.top_k)
             torch.cuda.synchronize()
+
+            # Profiled warmup pass to initialize CUPTI and Kineto activity buffers
+            with torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                record_shapes=True,
+                profile_memory=True,
+            ):
+                dummy_logits = model(warm_ids, start_pos=0, kv_cache=dummy_cache)
+                _ = sample_next_token(dummy_logits, temperature=args.temperature, top_k=args.top_k)
+            torch.cuda.synchronize()
+        print("[*] Warmup complete.")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(script_dir, "profile_results")
