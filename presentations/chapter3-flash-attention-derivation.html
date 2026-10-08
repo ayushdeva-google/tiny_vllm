@@ -182,7 +182,7 @@
 <div id="deck">
   <div id="rail"><div class="fill"></div></div>
 
-  <!-- SLIDE 1: PROLOGUE -->
+  <!-- SLIDE 1: PROLOGUE  -->
   <section class="slide" data-title="Prologue">
     <div class="wrap">
       <div class="eyebrow violet">Silicon &amp; Socratic Derivation</div>
@@ -208,7 +208,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 2: ANATOMY OF ATTENTION (ONE HEAD, ROW BY ROW) -->
+  <!-- SLIDE 2: ANATOMY OF ATTENTION (ONE HEAD, ROW BY ROW)  -->
   <section class="slide" data-title="Anatomy of Attention">
     <div class="wrap">
       <div class="eyebrow cyan">Act 1 · Mathematical Anatomy</div>
@@ -267,7 +267,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 3: THE CATASTROPHE -->
+  <!-- SLIDE 3: THE CATASTROPHE  -->
   <section class="slide" data-title="The Memory Wall">
     <div class="wrap">
       <div class="eyebrow red">Act 1 · The Crime Scene</div>
@@ -315,7 +315,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 4: DECONSTRUCTING SOFTMAX -->
+  <!-- SLIDE 4: DECONSTRUCTING SOFTMAX  -->
   <section class="slide" data-title="Deconstructing Softmax">
     <div class="wrap">
       <div class="eyebrow amber">Act 1 · Mathematical First Principles</div>
@@ -357,7 +357,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 5: ONLINE SOFTMAX DERIVATION -->
+  <!-- SLIDE 5: ONLINE SOFTMAX DERIVATION  -->
   <section class="slide" data-title="Online Softmax">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · The Mathematical Key</div>
@@ -408,7 +408,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 6: INTERACTIVE ONLINE SOFTMAX WIDGET -->
+  <!-- SLIDE 6: INTERACTIVE ONLINE SOFTMAX WIDGET  -->
   <section class="slide" data-title="Online Softmax Lab">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · Interactive Verification</div>
@@ -439,7 +439,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 7: FIRST TEST: DECODE PHASE -->
+  <!-- SLIDE 7: FIRST TEST: DECODE PHASE  -->
   <section class="slide" data-title="Decode Phase Plan">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
@@ -484,7 +484,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 8: SPLIT-K ARCHITECTURE -->
+  <!-- SLIDE 8: SPLIT-K ARCHITECTURE  -->
   <section class="slide" data-title="Split-K Architecture">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
@@ -535,7 +535,7 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 9: THE MISSING SPEEDUP BUG -->
+  <!-- SLIDE 9: THE MISSING SPEEDUP BUG  -->
   <section class="slide" data-title="The Mystery Bug">
     <div class="wrap">
       <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
@@ -574,7 +574,7 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 10: THE BFLOAT16 CAST TAX -->
+  <!-- SLIDE 10: THE BFLOAT16 CAST TAX  -->
   <section class="slide" data-title="The Cast Tax">
     <div class="wrap">
       <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
@@ -619,7 +619,55 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 11: PREFILL DERIVATION -->
+  <!-- SLIDE 11: ELIMINATING THE CAST TAX (NATIVE BFLOAT16)  -->
+  <section class="slide" data-title="Native BFloat16">
+    <div class="wrap">
+      <div class="eyebrow green">Act 2 · Production Integration</div>
+      <h2>Killing the Tax: Native __nv_bfloat16</h2>
+      <p class="lede">Isolating raw kernel latency isn't enough for production. We rewrote the kernel to accept native BFloat16 pointers directly from VRAM, converting on-the-fly inside thread registers.</p>
+
+      <div class="grid2">
+        <div class="card">
+          <span class="tag" style="color: var(--green);">1. Hardware On-The-Fly Upcast</span>
+          <p style="font-size: 13px; margin-top: 6px;">Declare kernel with native <code class="mono">__nv_bfloat16</code>. Convert in 1 clock cycle inside registers:</p>
+          <pre class="code"><span class="cm">// Load 16-bit key &amp; hardware upcast to FP32:</span>
+__nv_bfloat16 k_raw = K_cache[offset];
+float k_fp32 = __bfloat162float(k_raw);
+dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
+          <div class="callout green" style="font-size: 12.5px; margin-top: 8px;">
+            <strong>50% Bandwidth Reduction:</strong> Reading 2-byte BFloat16 instead of 4-byte Float32 halves memory bus traffic across all 8,192 keys!
+          </div>
+        </div>
+
+        <div class="card" style="border-color: var(--green);">
+          <span class="tag" style="color: var(--green);">2. Native BF16 Benchmark (32 Tokens @ 8,192)</span>
+          <table class="bench" style="margin-top: 8px;">
+            <tr><th>Implementation</th><th>Time</th><th>Speedup</th></tr>
+            <tr><td>PyTorch Native BF16</td><td>335.36 ms</td><td>1.00x</td></tr>
+            <tr class="win"><td>Warp Decode Native BF16</td><td class="k">15.77 ms</td><td class="k">21.26x FASTER!</td></tr>
+          </table>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Zero Python casting overhead. The 2.17 ms tax is completely gone, and Decode runs <strong>21x faster</strong> than native PyTorch.</p>
+        </div>
+      </div>
+
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>What is the physical advantage of native BFloat16 in Decode besides eliminating the Python cast?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>Memory bandwidth! Decode is 100% memory-bandwidth bound. Reading 2-byte BFloat16 instead of 4-byte Float32 cuts bytes transferred from HBM by half. The tax is gone, and the kernel runs even faster!</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>Now let's tackle the 2D tiling mechanics of full Prefill.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 12: PREFILL DERIVATION  -->
   <section class="slide" data-title="Tiling Prefill">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Full FlashAttention</div>
@@ -674,7 +722,7 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 12: THE 48KB SRAM TRAP -->
+  <!-- SLIDE 13: THE 48KB SRAM TRAP  -->
   <section class="slide" data-title="The 48KB SRAM Trap">
     <div class="wrap">
       <div class="eyebrow red">Act 3 · Hardware Constraints</div>
@@ -715,7 +763,7 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 13: CAUSAL MASKING NUANCE -->
+  <!-- SLIDE 14: CAUSAL MASKING NUANCE  -->
   <section class="slide" data-title="Causal Masking Nuance">
     <div class="wrap">
       <div class="eyebrow amber">Act 3 · Warp Divergence Optimization</div>
@@ -754,7 +802,7 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 14: PREFILL BENCHMARK TRIUMPH -->
+  <!-- SLIDE 15: PREFILL BENCHMARK TRIUMPH  -->
   <section class="slide" data-title="Prefill Benchmark">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Breakthrough</div>
@@ -788,7 +836,7 @@ O[k] = global_O[k] / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 15: THE 156MS DECODE DISASTER -->
+  <!-- SLIDE 16: THE 156MS DECODE DISASTER  -->
   <section class="slide" data-title="Decode Disaster">
     <div class="wrap">
       <div class="eyebrow red">Act 4 · The Reality Check</div>
@@ -843,7 +891,7 @@ __shared__ float smem[128][64];
     </div>
   </section>
 
-  <!-- SLIDE 16: THE HARDWARE FIX: WARP DECODE -->
+  <!-- SLIDE 17: THE HARDWARE FIX: WARP DECODE  -->
   <section class="slide" data-title="Warp Decode Architecture">
     <div class="wrap">
       <div class="eyebrow green">Act 5 · The Redemption</div>
@@ -892,7 +940,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 17: FINAL BENCHMARK RESULTS -->
+  <!-- SLIDE 18: FINAL BENCHMARK RESULTS  -->
   <section class="slide" data-title="The Final Benchmark">
     <div class="wrap">
       <div class="eyebrow green">Act 5 · Silicon Verification</div>
@@ -933,7 +981,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 18: COMPUTE VS MEMORY BOUND -->
+  <!-- SLIDE 19: COMPUTE VS MEMORY BOUND  -->
   <section class="slide" data-title="Architectural Synthesis">
     <div class="wrap">
       <div class="eyebrow violet">Act 6 · The Fundamental Theory</div>
@@ -970,7 +1018,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 19: THE FULL STACK -->
+  <!-- SLIDE 20: THE FULL STACK  -->
   <section class="slide" data-title="The Full LLM Stack">
     <div class="wrap">
       <div class="eyebrow cyan">Act 6 · Putting It All Together</div>
@@ -1004,7 +1052,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 20: EPILOGUE & TAKEAWAYS -->
+  <!-- SLIDE 21: EPILOGUE & TAKEAWAYS  -->
   <section class="slide" data-title="Epilogue">
     <div class="wrap">
       <div class="eyebrow green">Epilogue · Engineering Rules</div>
