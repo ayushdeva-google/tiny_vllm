@@ -1,0 +1,26 @@
+{
+    "prefill": {
+        "context_length": 8192,
+        "pytorch": {
+            "status": "OOM CRASH",
+            "time_ms": null,
+            "vram_overhead_gb": 8.5
+        },
+        "flash_attention": {
+            "status": "SUCCESS",
+            "time_ms": 294.84,
+            "vram_overhead_gb": 0.0
+        }
+    },
+    "decode": {
+        "tokens_generated": 32,
+        "pytorch": {
+            "time_ms": 37.14,
+            "speedup": 1.0
+        },
+        "warp_decode": {
+            "time_ms": 15.99,
+            "speedup": 2.32
+        }
+    }
+}
