@@ -505,142 +505,171 @@
     </div>
   </section>
 
-  <!-- SLIDE 8: SPLIT-K ARCHITECTURE  -->
-  <section class="slide" data-title="Split-K Architecture">
+  <!-- SLIDE 8: THE FIRST SPLIT-K ATTEMPT & THE SERIAL BUG  -->
+  <section class="slide" data-title="Split-K &amp; The Serial Bug">
     <div class="wrap">
-      <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
-      <h2>The Solution: Split-K Decode Architecture</h2>
-      <p class="lede">To saturate all 58 SMs, Alex splits the sequence into 64 chunks of 128 keys. Stage 1 distributes 2,048 blocks across the entire GPU; Stage 2 merges them in thread registers.</p>
-
-      <div class="grid2">
-        <div class="card" style="border-top: 3px solid var(--cyan);">
-          <span class="tag" style="color: var(--cyan);">Stage 1 · 2,048 Blocks (Saturate All SMs)</span>
-          <h3 style="margin-top: 8px;">Grid: (64 chunks, 32 heads, 1 batch)</h3>
-          <p style="font-size: 13px;">Each block loads 128 keys and 128 values. Computes local attention scores against the broadcasted Query.</p>
-          <pre class="code"><span class="cm">// Block writes its partial summary to VRAM:</span>
-partial_m[block_idx] = local_m;
-partial_l[block_idx] = local_l;
-partial_O[block_idx * 64 + k] = local_O[k];</pre>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 8px;">
-            Now 2,048 blocks flood all 58 SMs (~35 blocks/SM), hiding global memory latency completely!
-          </p>
-        </div>
-
-        <div class="card" style="border-top: 3px solid var(--green);">
-          <span class="tag" style="color: var(--green);">Stage 2 · 32 Blocks (Merge in Registers)</span>
-          <h3 style="margin-top: 8px;">Grid: (32 heads, 1 batch) · 64 Threads</h3>
-          <p style="font-size: 13px;">One block per head reads the 64 partial results and merges them directly in <strong>thread registers</strong>.</p>
-          <pre class="code"><span class="cm">// 1. Pass 1: Global max across 64 chunks (64 cycles)</span>
-float global_m = -1e20f;
-<span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i)
-    <span class="kw">if</span> (partial_m[i] &gt; -1e19f) global_m = max(global_m, partial_m[i]);
-
-<span class="cm">// 2. Pass 2: Rescale and merge in thread registers</span>
-float global_l = 0.0f, global_O_k = 0.0f;
-<span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i) {
-    <span class="kw">if</span> (partial_m[i] &gt; -1e19f) {
-        float exp_diff = expf(partial_m[i] - global_m);
-        global_l += partial_l[i] * exp_diff;
-        global_O_k += partial_O[i*64 + k] * exp_diff; <span class="cm">// Coalesced!</span>
-    }
-}
-<span class="cm">// 3. Final normalization:</span>
-O[k] = global_O_k / global_l;</pre>
-        </div>
-      </div>
-
-      <div class="socratic-flow">
-        <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Stage 2 merges 64 partial outputs from Stage 1. Why scan <code>global_m</code> first instead of 1-pass streaming?</p>
-        </div>
-        <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>All 64 chunks are already in VRAM! Scanning 64 numbers takes just 64 cycles. It cuts expensive <code>expf()</code> calls by 50%, eliminates repeated accumulator rescaling, and runs entirely in fast registers with 100% coalesced memory reads!</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SLIDE 9: THE MISSING SPEEDUP BUG  -->
-  <section class="slide" data-title="The Mystery Bug">
-    <div class="wrap">
-      <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
-      <h2>The Mystery of the 'Missing Speedup'</h2>
-      <p class="lede">Alex ran the PyTorch profiler on Split-K Decode vs Native PyTorch. The result was demoralizing.</p>
+      <div class="eyebrow red">Act 2 · The First Split-K Attempt</div>
+      <h2>The 156 ms Reality Check: The Serial Bug</h2>
+      <p class="lede">To saturate all 58 SMs, Alex splits the sequence into 64 chunks of 128 keys (2,048 blocks). But the first benchmark is a disaster: 3x slower than PyTorch!</p>
 
       <div class="grid2">
         <div>
           <div class="card" style="border-color: var(--red);">
-            <h3 style="color: var(--red);">PyTorch End-to-End Profile</h3>
+            <h3 style="color: var(--red);">32-Token Decode Benchmark</h3>
             <table class="bench">
-              <tr><th>Implementation</th><th>Reported Time</th></tr>
-              <tr class="win"><td>PyTorch Native</td><td>0.52 ms</td></tr>
-              <tr class="loss"><td>Our Custom Split-K</td><td>2.48 ms (4.7x SLOWER!)</td></tr>
+              <thead>
+                <tr><th>Implementation</th><th>Total Time</th><th>Per Token</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                <tr class="win"><td>PyTorch cuBLAS</td><td>55.48 ms</td><td>1.73 ms/tok</td><td>Baseline</td></tr>
+                <tr class="loss"><td>Our Initial Split-K</td><td>156.04 ms</td><td>4.88 ms/tok</td><td>3x SLOWER!</td></tr>
+              </tbody>
             </table>
+            <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">
+              Launching 2,048 blocks fixed SM starvation, but decode latency skyrocketed to 156 ms. Why?
+            </p>
           </div>
         </div>
 
         <div>
-          <div class="socratic-flow" style="margin-top: 0;">
-            <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>PyTorch says your Split-K kernel is 4.7x slower. Is the CUDA kernel actually slow on silicon?</p>
-            </div>
-            <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>Never trust Python timestamps. I wrote an isolated C++ benchmark (`verify_kernels.py`) with native CUDA events to measure the bare hardware execution.</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Let's look at what the silicon actually reported.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+          <pre class="code"><span class="cm">// The fatal flaw inside splitk_stage1:</span>
+__shared__ float smem[128][64];
 
-  <!-- SLIDE 10: THE BFLOAT16 CAST TAX  -->
-  <section class="slide" data-title="The Cast Tax">
-    <div class="wrap">
-      <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
-      <h2>Unmasking the 'BFloat16 Cast Tax'</h2>
-      <p class="lede">The kernel was innocent. A hidden PyTorch memory copy was silently consuming 95% of the total runtime.</p>
-
-      <div class="grid2">
-        <div class="card">
-          <span class="tag" style="color: var(--green);">Raw Hardware Execution Time (Per Token)</span>
-          <table class="bench" style="margin-top: 8px;">
-            <tr><th>Kernel</th><th>Per-Token Hardware Time</th></tr>
-            <tr><td>Native FlashDecode Baseline</td><td>0.211 ms / tok</td></tr>
-            <tr class="win"><td>Our Custom Split-K Kernel</td><td class="k">0.108 ms / tok (2x FASTER!)</td></tr>
-          </table>
-          <p style="font-size: 12.5px; color: var(--muted); margin-top: 10px;">On the actual silicon, our Split-K kernel was twice as fast as the baseline per token step!</p>
-        </div>
-
-        <div class="card">
-          <span class="tag" style="color: var(--red);">The Hidden Python Bottleneck</span>
-          <div class="callout red" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-            k = k_cache.to(torch.float32).contiguous()<br>
-            Time taken: 2.17 ms!
-          </div>
-          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B weights are natively <code>BFloat16</code>. Our C++ kernel took <code>float32</code>. In the inference loop, PyTorch was allocating and casting 64MB of tensors on every single token step!</p>
+<span class="err">if (tx == 0) {  // &lt;-- FATAL DESIGN BUG!</span>
+<span class="err">    for (int c = 0; c &lt; 128; ++c) {</span>
+<span class="err">        float dot = 0.0f;</span>
+<span class="err">        for (int k = 0; k &lt; d; ++k)</span>
+<span class="err">            dot += q_reg[k] * smem[c][k];</span>
+<span class="err">        scores[c] = dot * scale;</span>
+<span class="err">    }</span>
+<span class="err">}</span></pre>
         </div>
       </div>
 
       <div class="socratic-flow">
         <div class="turn">
           <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Where was the 2.4 ms delay coming from?</p>
+          <p>Your Split-K kernel is 3x slower than PyTorch cuBLAS. Look at line 4 of your kernel. What are threads 1..127 doing?</p>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>LLaMA weights are BFloat16; our C++ kernel took Float32. The Python casting loop was allocating and copying 64 MB every single token step! The kernel itself was flying at 0.108 ms.</p>
+          <p>They're sitting idle! <code>if (tx == 0)</code> forced Thread 0 to run all 128 dot products sequentially. It was a sequential CPU loop running on a GPU! And staging keys in shared memory is wasteful because for 1 query, keys are read once and never reused.</p>
         </div>
         <div class="turn">
           <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Now scale the verified Online Softmax logic to full Prefill.</p>
+          <p>How do you restructure the kernel to treat the GPU as a true parallel vector machine?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 9: WARP DECODE REDEMPTION  -->
+  <section class="slide" data-title="Warp-Optimized Decode">
+    <div class="wrap">
+      <div class="eyebrow green">Act 2 · Vector Parallelism</div>
+      <h2>Redemption: Warp-Optimized Decode</h2>
+      <p class="lede">Alex completely redesigns the Decode kernel: 1 thread = 1 token, streaming keys directly into registers, with parallel tree reduction.</p>
+
+      <div class="grid2">
+        <div class="card">
+          <span class="tag" style="color: var(--green);">The 4 Architectural Pillars</span>
+          <ul class="clean" style="margin-top: 10px; font-size: 13px;">
+            <li><strong>1 Thread = 1 Token:</strong> All 128 threads compute simultaneously. Thread <em>tx</em> processes key <em>tx</em>.</li>
+            <li><strong>Bypass Shared Memory:</strong> Load keys directly from Global Memory into registers. Zero staging in SRAM!</li>
+            <li><strong>Parallel Tree Reduction:</strong> Reduce max and sum across warps in shared memory in log₂(128) = 7 steps.</li>
+            <li><strong>Stage 2 Merge in Registers:</strong> 32 blocks read partial outputs and merge in registers using 2-pass Online Softmax.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border-color: var(--green);">
+          <h3 style="color: var(--green);">Decode Latency (32 Tokens @ 8,192 Context)</h3>
+          <table class="bench">
+            <thead>
+              <tr><th>Implementation</th><th>Total (32 tok)</th><th>Per Token</th><th>Speedup</th></tr>
+            </thead>
+            <tbody>
+              <tr class="loss"><td>Our Initial Split-K (Serial Bug)</td><td>156.04 ms</td><td>4.88 ms/tok</td><td>0.24x (4.2x slower)</td></tr>
+              <tr><td>Naive PyTorch cuBLAS</td><td>37.14 ms</td><td>1.16 ms/tok</td><td>1.00x</td></tr>
+              <tr class="win"><td>Warp-Optimized Decode</td><td class="k">15.99 ms</td><td class="k">0.50 ms/tok</td><td class="k">2.32x FASTER!</td></tr>
+            </tbody>
+          </table>
+          <div class="callout green" style="margin-top: 12px; font-size: 12.5px;">
+            <strong>Result:</strong> Slashed per-token decode time from 4.88 ms down to 0.50 ms—a <strong>10x speedup</strong> over our naive attempt, and <strong>2.32x faster than NVIDIA cuBLAS</strong>!
+          </div>
+        </div>
+      </div>
+
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>Why did bypassing shared memory and streaming directly to registers beat cuBLAS by 2.32x?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>In Decode, arithmetic intensity is ~1 FLOP/byte. Staging keys in SRAM just adds memory copy latency. Streaming directly to registers and reducing in 7 steps maximizes memory bandwidth!</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>Now plug this fast kernel into our full PyTorch inference loop...</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 10: THE MISSING SPEEDUP BUG & CAST TAX  -->
+  <section class="slide" data-title="The Mystery Bug">
+    <div class="wrap">
+      <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
+      <h2>The Mystery of the 'Missing Speedup'</h2>
+      <p class="lede">Alex plugged the fast Warp Decode kernel into the full PyTorch inference engine. The result was demoralizing.</p>
+
+      <div class="grid2">
+        <div class="card" style="border-color: var(--red);">
+          <h3 style="color: var(--red);">PyTorch End-to-End Profile</h3>
+          <table class="bench">
+            <thead>
+              <tr><th>Implementation</th><th>Reported Time</th></tr>
+            </thead>
+            <tbody>
+              <tr class="win"><td>PyTorch Native</td><td>0.52 ms</td></tr>
+              <tr class="loss"><td>Our Custom Split-K</td><td>2.48 ms (4.7x SLOWER!)</td></tr>
+            </tbody>
+          </table>
+          <div class="callout red" style="margin: 10px 0 0; font-family: var(--mono); font-size: 12px;">
+            k = k_cache.to(torch.float32).contiguous()<br>
+            Time taken: 2.17 ms!
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="tag" style="color: var(--green);">Raw Hardware Execution Time (Per Token)</span>
+          <table class="bench" style="margin-top: 8px;">
+            <thead>
+              <tr><th>Kernel</th><th>Per-Token Hardware Time</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Native FlashDecode Baseline</td><td>0.211 ms / tok</td></tr>
+              <tr class="win"><td>Our Custom Split-K Kernel</td><td class="k">0.108 ms / tok (2x FASTER!)</td></tr>
+            </tbody>
+          </table>
+          <p style="font-size: 12.5px; color: var(--muted); margin-top: 10px;">
+            On the actual silicon, our Split-K kernel was twice as fast (0.108 ms)! The 2.48 ms delay was entirely Python memory allocation and type conversion.
+          </p>
+        </div>
+      </div>
+
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>The bare silicon kernel runs in 0.108 ms, but PyTorch reports 2.48 ms. Where was the time lost?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>The Python cast tax! LLaMA weights are natively BFloat16; our C++ kernel took Float32. PyTorch was allocating and casting 64 MB of tensors on every single token step! The kernel was flying; Python was choking.</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>How do we kill the tax altogether?</p>
         </div>
       </div>
     </div>
@@ -908,7 +937,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
             </div>
             <div class="turn">
               <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Speed is irrelevant if the engine crashes. FlashAttention buys survival. Now, what happens in Decode?</p>
+              <p>We have conquered both phases: Prefill runs in <em>O</em>(1) memory, and Decode runs in 0.49 ms/token. Let's synthesize the fundamental architectural lessons.</p>
             </div>
           </div>
         </div>
@@ -916,155 +945,10 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
     </div>
   </section>
 
-  <!-- SLIDE 16: THE 156MS DECODE DISASTER  -->
-  <section class="slide" data-title="Decode Disaster">
-    <div class="wrap">
-      <div class="eyebrow red">Act 4 · The Reality Check</div>
-      <h2>The Reality Check: The 156 ms Disaster</h2>
-      <p class="lede">Generating 32 tokens after prefill revealed an embarrassing regression.</p>
-
-      <div class="grid2">
-        <div>
-          <div class="card" style="border-color: var(--red);">
-            <h3 style="color: var(--red);">32-Token Decode Benchmark</h3>
-            <table class="bench">
-              <tr><th>Implementation</th><th>Total Time</th><th>Latency / Token</th></tr>
-              <tr class="win"><td>PyTorch cuBLAS</td><td>55.48 ms</td><td>1.73 ms</td></tr>
-              <tr class="loss"><td>Our Custom Decode</td><td>156.04 ms</td><td>4.87 ms (3x SLOWER!)</td></tr>
-            </table>
-          </div>
-        </div>
-
-        <div>
-          <pre class="code"><span class="cm">// The fatal flaw in splitk_decode_stage1:</span>
-__shared__ float smem[128][64];
-
-<span class="err">if (tx == 0) {  // &lt;-- FATAL DESIGN BUG!</span>
-<span class="err">    for (int c = 0; c &lt; 128; ++c) {</span>
-<span class="err">        float dot = 0.0f;</span>
-<span class="err">        for (int k = 0; k &lt; d; ++k)</span>
-<span class="err">            dot += q_reg[k] * smem[c][k];</span>
-<span class="err">        scores[c] = dot * scale;</span>
-<span class="err">    }</span>
-<span class="err">}</span></pre>
-        </div>
-      </div>
-
-      <div class="socratic-flow">
-        <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Your Decode kernel is 4x slower than PyTorch cuBLAS. Look at line 12 of `splitk_decode_stage1`. What are threads 1..127 doing?</p>
-        </div>
-        <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>They were sitting idle! `if (tx == 0)` forced Thread 0 to run all 128 dot products sequentially. It was a sequential CPU loop running on a GPU!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>And why is staging keys in Shared Memory wasteful for 1 query?</p>
-        </div>
-        <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Because with 1 query, keys are read once and never reused! SRAM provides zero benefit and adds latency.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SLIDE 17: THE HARDWARE FIX: WARP DECODE  -->
-  <section class="slide" data-title="Warp Decode Architecture">
-    <div class="wrap">
-      <div class="eyebrow green">Act 5 · The Redemption</div>
-      <h2>Redemption: Warp-Optimized Decode</h2>
-      <p class="lede">Alex completely redesigns the Decode kernel to treat the GPU as a parallel vector machine.</p>
-
-      <div class="grid2">
-        <div class="card">
-          <span class="tag" style="color: var(--green);">The 4 Architectural Pillars</span>
-          <ul class="clean" style="margin-top: 10px;">
-            <li><strong>1 Thread = 1 Token:</strong> All 128 threads compute simultaneously. Thread <em>tx</em> processes key <em>tx</em>.</li>
-            <li><strong>Bypass Shared Memory:</strong> Load keys directly from Global Memory into registers. Zero staging in SRAM!</li>
-            <li><strong>Tree Reduction:</strong> Block-wide reduction for max <em>m</em> and sum <em>l</em> using shared memory tree reduction in log₂(128) = 7 steps.</li>
-            <li><strong>Parallel Transpose:</strong> Thread <em>tx</em> writes its weighted <em>V</em> vector to shared memory; threads 0..63 each reduce along a column.</li>
-          </ul>
-        </div>
-
-        <div>
-          <pre class="code"><span class="cm">// Inside warp_decode.cu:</span>
-<span class="hl">// 1. Compute dot directly from VRAM</span>
-float dot = 0.0f;
-<span class="kw">for</span> (int k = 0; k &lt; d; ++k)
-    dot += q_reg[k] * K_cache[key_offset + k];
-float score = dot * scale;
-
-<span class="hl">// 2. Parallel Tree Reduction (7 steps)</span>
-smem_reduce[tx] = score;
-__syncthreads();
-<span class="kw">for</span> (int s = 64; s &gt; 0; s /= 2) {
-    <span class="kw">if</span> (tx &lt; s) smem_reduce[tx] = max(smem_reduce[tx], smem_reduce[tx+s]);
-    __syncthreads();
-}</pre>
-        </div>
-      </div>
-
-      <div class="socratic-flow">
-        <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>How do you restructure the kernel to treat the GPU as a parallel vector machine?</p>
-        </div>
-        <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>1 Thread = 1 Token! All 128 threads load keys directly from Global Memory into registers, compute dots in parallel, and reduce across warps in 7 steps!</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SLIDE 18: FINAL BENCHMARK RESULTS  -->
-  <section class="slide" data-title="The Final Benchmark">
-    <div class="wrap">
-      <div class="eyebrow green">Act 5 · Silicon Verification</div>
-      <h2>The Final Benchmark: A 2.32x Speedup</h2>
-      <p class="lede">We compiled `cuda_warp_decode` and ran the identical 32-token benchmark at 8,192 context length.</p>
-
-      <div class="grid2">
-        <div class="card" style="border-color: var(--green);">
-          <h3 style="color: var(--green);">Decode Latency (32 Tokens @ 8,192 Context)</h3>
-          <table class="bench">
-            <tr><th>Implementation</th><th>Total (32 tok)</th><th>Per Token</th><th>Speedup</th></tr>
-            <tr><td>Naive PyTorch cuBLAS</td><td>37.14 ms</td><td>1.16 ms/tok</td><td>1.00x</td></tr>
-            <tr class="loss"><td>Our Initial Decode (Serial Bug)</td><td>156.04 ms</td><td>4.88 ms/tok</td><td>0.24x (4.2x slower)</td></tr>
-            <tr class="win"><td>Warp-Optimized Decode</td><td class="k">15.99 ms</td><td class="k">0.50 ms/tok</td><td class="k">2.32x FASTER!</td></tr>
-          </table>
-          <div class="callout green" style="margin-top: 14px; font-size: 13px;">
-            <strong>Result:</strong> Slashed per-token decode time from 4.88 ms down to 0.50 ms—a <strong>10x speedup</strong> over our naive attempt, and <strong>2.32x faster than NVIDIA cuBLAS</strong>!
-          </div>
-        </div>
-
-        <div>
-          <div class="socratic-flow" style="margin-top: 0;">
-            <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>Why did our custom kernel beat NVIDIA's proprietary cuBLAS by 2.32x?</p>
-            </div>
-            <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>PyTorch launched 5 separate kernels per token (`repeat_interleave` → `matmul` → `masked_fill` → `softmax` → `matmul`). Our fused warp kernel computes dot products, tree reduction, and accumulation in a single fused pass!</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>You have created a complete inference engine: immune to VRAM crashes in Prefill, and faster than proprietary vendor libraries in Decode.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SLIDE 19: COMPUTE VS MEMORY BOUND  -->
+  <!-- SLIDE 16: COMPUTE VS MEMORY BOUND  -->
   <section class="slide" data-title="Architectural Synthesis">
     <div class="wrap">
-      <div class="eyebrow violet">Act 6 · The Fundamental Theory</div>
+      <div class="eyebrow violet">Act 4 · Architectural Synthesis</div>
       <h2>The Bifurcation of LLM Inference</h2>
       <p class="lede">Why real engines (vLLM, TensorRT-LLM) use completely different kernels for Prefill vs Decode.</p>
 
@@ -1098,10 +982,10 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 20: THE FULL STACK  -->
+  <!-- SLIDE 17: THE FULL STACK  -->
   <section class="slide" data-title="The Full LLM Stack">
     <div class="wrap">
-      <div class="eyebrow cyan">Act 6 · Putting It All Together</div>
+      <div class="eyebrow cyan">Act 4 · Putting It All Together</div>
       <h2>The Full Tiny-vLLM Stack So Far</h2>
       <p class="lede">From Chapter 1 to Chapter 3: How our hand-written CUDA kernels compose into a production-grade inference engine.</p>
 
@@ -1119,7 +1003,7 @@ __syncthreads();
         <div class="card">
           <span class="tag">Chapter 3 · Decode</span>
           <h3>Warp Flash Decode</h3>
-          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction. 2.32x faster than native PyTorch.</p>
+          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction. 21.26x faster than native PyTorch BF16.</p>
         </div>
       </div>
 
@@ -1132,7 +1016,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 21: EPILOGUE & TAKEAWAYS  -->
+  <!-- SLIDE 18: EPILOGUE & TAKEAWAYS  -->
   <section class="slide" data-title="Epilogue">
     <div class="wrap">
       <div class="eyebrow green">Epilogue · Engineering Rules</div>
@@ -1156,7 +1040,7 @@ __syncthreads();
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>Memory movement, not arithmetic, dictates GPU performance. From an 8.5 GB OOM crash to a 15.9 ms decode time—ready for PagedAttention in Chapter 4!</p>
+          <p>Memory movement, not arithmetic, dictates GPU performance. From an 8.5 GB OOM crash to a 0.49 ms/token decode latency—ready for PagedAttention in Chapter 4!</p>
         </div>
       </div>
     </div>
@@ -1168,7 +1052,7 @@ __syncthreads();
 <div id="nav">
   <button class="navbtn" id="prev" aria-label="Previous slide">←</button>
   <div id="dots"></div>
-  <span id="counter">01 / 20</span>
+  <span id="counter">01 / 18</span>
   <button class="navbtn" id="next" aria-label="Next slide">→</button>
 </div>
 
