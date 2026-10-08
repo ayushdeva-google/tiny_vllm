@@ -381,23 +381,23 @@
   <section class="slide" data-title="Online Softmax">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · The Mathematical Key</div>
-      <h2>The Derivation: Online Softmax</h2>
-      <p class="lede">Alex's mathematical breakthrough: You can update a running Softmax denominator and output vector using a single scaling factor.</p>
+      <h2>The Derivation: Streaming Online Softmax</h2>
+      <p class="lede">Alex's mathematical breakthrough: As new chunks stream in, you find the latest max first. The new chunk needs zero rescaling—only the past accumulator is scaled down.</p>
 
       <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--green);">Mathematical Proof</span>
-          <p style="font-size: 13.5px; margin-top: 8px;">Let chunk 1 have max <span class="mono k-a">m<sub>1</sub></span>, sum <span class="mono k-c">l<sub>1</sub></span>, and unnormalized output <span class="mono k-v">O<sub>1</sub></span>.<br>Let chunk 2 have max <span class="mono k-a">m<sub>2</sub></span>, sum <span class="mono k-c">l<sub>2</sub></span>, and unnormalized output <span class="mono k-v">O<sub>2</sub></span>.</p>
+          <span class="tag" style="color: var(--green);">The Streaming Update Algorithm</span>
+          <p style="font-size: 13px; margin-top: 8px;">Suppose we have running state from past tokens: max <span class="mono k-a">m<sub>prev</sub></span>, sum <span class="mono k-c">l<sub>prev</sub></span>, and unnormalized output <span class="mono k-v">O<sub>prev</sub></span>.<br>Now, a new chunk of keys arrives with raw dot products <span class="mono">S<sub>j</sub></span>.</p>
           
-          <div class="callout green" style="font-family: var(--mono); font-size: 12.5px; line-height: 1.6;">
-            1. New Global Max:<br>
-            &nbsp;&nbsp;&nbsp;m<sub>new</sub> = max(m<sub>1</sub>, m<sub>2</sub>)<br><br>
-            2. Scale factor for old chunk:<br>
-            &nbsp;&nbsp;&nbsp;α = e<sup>(m<sub>1</sub> - m<sub>new</sub>)</sup><br><br>
-            3. Rescaled denominator:<br>
-            &nbsp;&nbsp;&nbsp;l<sub>new</sub> = l<sub>1</sub> · α + l<sub>2</sub> · e<sup>(m<sub>2</sub> - m<sub>new</sub>)</sup><br><br>
-            4. Rescaled accumulator:<br>
-            &nbsp;&nbsp;&nbsp;O<sub>new</sub> = O<sub>1</sub> · α + O<sub>2</sub> · e<sup>(m<sub>2</sub> - m<sub>new</sub>)</sup>
+          <div class="callout green" style="font-family: var(--mono); font-size: 12px; line-height: 1.6;">
+            1. Update to Latest Global Max First:<br>
+            &nbsp;&nbsp;&nbsp;m<sub>new</sub> = max(m<sub>prev</sub>, max<sub>j</sub> S<sub>j</sub>)<br><br>
+            2. Scale factor for PAST state only:<br>
+            &nbsp;&nbsp;&nbsp;α = e<sup>(m<sub>prev</sub> - m<sub>new</sub>)</sup><br><br>
+            3. Rescale past accumulator &amp; add new chunk directly:<br>
+            &nbsp;&nbsp;&nbsp;l<sub>new</sub> = (l<sub>prev</sub> · α) + Σ<sub>j</sub> e<sup>(S<sub>j</sub> - m<sub>new</sub>)</sup><br><br>
+            4. Rescale past output &amp; accumulate new values:<br>
+            &nbsp;&nbsp;&nbsp;O<sub>new</sub> = (O<sub>prev</sub> · α) + Σ<sub>j</sub> (e<sup>(S<sub>j</sub> - m<sub>new</sub>)</sup> · V<sub>j</sub>)
           </div>
         </div>
 
@@ -405,14 +405,14 @@
           <div class="dialogue aha">
             <div class="avatar g">Alex</div>
             <div class="speech">
-              <p>"Look at line 4! Because e<sup>x - m<sub>new</sub></sup> = e<sup>x - m<sub>1</sub></sup> · e<sup>m<sub>1</sub> - m<sub>new</sub></sup>, we just multiply our existing accumulator vector by α = e<sup>m<sub>1</sub> - m<sub>new</sub></sup>! <br><br><strong>We never have to store the attention scores.</strong> We compute the dot product, update <em>m</em> and <em>l</em>, accumulate into <em>O</em>, and immediately discard <em>S</em> from registers!"</p>
+              <p>"Look at steps 3 and 4! Because we find <em>m</em><sub>new</sub> first, the new chunk evaluates its exponentials directly against <em>m</em><sub>new</sub>.<br><br><strong>The new chunk never needs rescaling!</strong> Only the past running accumulator is scaled down by α. We never materialize <em>S</em>—everything updates inside 3 scalar registers!"</p>
             </div>
           </div>
 
           <div class="dialogue teacher">
             <div class="avatar t">Dr. Chen</div>
             <div class="speech">
-              <p>"Now you have broken the memory wall. FlashAttention is not an approximation. It produces the exact same floating-point output as standard attention, but with <em>O</em>(1) memory."</p>
+              <p>"Precisely. The only time you scale both chunks is in a parallel tree reduction (like Split-K Stage 2 where separate thread blocks ran in parallel). In FlashAttention's streaming loop, the new chunk is always computed directly at the latest max."</p>
             </div>
           </div>
         </div>
@@ -1112,19 +1112,19 @@ __syncthreads();
     },
     {
       title: "Step 1: Process Chunk 1 = [1.0, 3.0]",
-      text: "Local Max: m_1 = 3.0\nExponentials: [e^(1-3), e^(3-3)] = [e^(-2), 1.0] ≈ [0.135, 1.000]\nLocal Sum: l_1 = 1.135\nState: m = 3.0 | l = 1.135 | O = [0.135*V_0 + 1.0*V_1]"
+      text: "Local Max: m_1 = 3.0\nExponentials: [e^(1-3), e^(3-3)] = [e^(-2), 1.0] ≈ [0.1353, 1.000]\nLocal Sum: l_1 = 1.1353\nState: m = 3.0 | l = 1.1353 | O = 0.1353*V_0 + 1.0*V_1"
     },
     {
       title: "Step 2: Chunk 2 Arrives = [5.0, 2.0]",
-      text: "Local Max: m_2 = 5.0 (Larger than old max 3.0!)\nNew Global Max: m_new = max(3.0, 5.0) = 5.0\nCorrection Scale Factor: α = e^(3.0 - 5.0) = e^(-2) ≈ 0.1353"
+      text: "Raw dot products for Chunk 2: [5.0, 2.0] (chunk max = 5.0)\nUpdate Global Max first: m_new = max(3.0, 5.0) = 5.0\nCorrection Scale Factor for PAST state: α = e^(3.0 - 5.0) = e^(-2) ≈ 0.1353"
     },
     {
-      title: "Step 3: Rescale Old State & Merge Chunks",
-      text: "Rescale Old Denominator: l_old_scaled = 1.135 * 0.1353 ≈ 0.1536\nChunk 2 Exponentials: [e^(5-5), e^(2-5)] = [1.0, e^(-3)] ≈ [1.0, 0.050]\nNew Denominator: l_new = 0.1536 + 1.050 = 1.2036\nRescaled Acc: O_new = (O_old * 0.1353) + (1.0*V_2 + 0.05*V_3)\n\nBoth chunks are now merged into running registers!"
+      title: "Step 3: Rescale Past & Add Chunk 2 Directly",
+      text: "Rescale Past State:\n  l_past_scaled = 1.1353 * 0.1353 ≈ 0.1536\n  O_past_scaled = O_past * 0.1353\n\nEvaluate Chunk 2 directly with m_new = 5.0 (Zero rescaling needed!):\n  Exponentials: [e^(5-5), e^(2-5)] = [1.0, e^(-3)] ≈ [1.0, 0.0498]\n  Chunk 2 Sum: 1.0498\n\nMerge into Running Registers:\n  l_new = 0.1536 + 1.0498 = 1.2034\n  O_new = O_past_scaled + (1.0*V_2 + 0.0498*V_3)\n\nBoth chunks merged! Notice Chunk 2 was evaluated on the latest max directly."
     },
     {
-      title: "Step 4: Final Normalization (O = O_acc / l)",
-      text: "Final Division (executed once at the end of the sequence):\nO_final = O_new / l_new = O_new / 1.2036\n\nEffective Softmax Attention Probabilities:\nP = [0.0183/1.2036, 0.1353/1.2036, 1.0/1.2036, 0.0498/1.2036]\n  = [0.0152, 0.1124, 0.8308, 0.0414]  → Sum = 1.0000 (100%)\n\nFinal Output Vector:\nO = 0.0152*V_0 + 0.1124*V_1 + 0.8308*V_2 + 0.0414*V_3\n\nExact bit-for-bit equivalence with standard Softmax(Q K^T) V, without ever materializing the attention matrix in VRAM!"
+      title: "Step 4: Final Normalization (O = O_new / l_new)",
+      text: "Final Division (executed once at the end of the sequence):\nO_final = O_new / l_new = O_new / 1.2034\n\nEffective Softmax Attention Probabilities:\nP = [0.0183/1.2034, 0.1353/1.2034, 1.0/1.2034, 0.0498/1.2034]\n  = [0.0152, 0.1124, 0.8308, 0.0414]  → Sum = 1.0000 (100%)\n\nFinal Output Vector:\nO = 0.0152*V_0 + 0.1124*V_1 + 0.8308*V_2 + 0.0414*V_3\n\nExact bit-for-bit equivalence with standard Softmax(Q K^T) V, without ever materializing the attention matrix in VRAM!"
     }
   ];
 
