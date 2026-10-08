@@ -268,7 +268,7 @@
           <div class="dialogue teacher">
             <div class="avatar t">Dr. Chen</div>
             <div class="speech">
-              <p>"The actual inputs $Q, K, V$ are tiny (only 64MB total). The final output $O$ is only 2MB. Why are you writing 17 GB of temporary trash to global memory?"</p>
+              <p>"The actual inputs <em>Q</em>, <em>K</em>, <em>V</em> are tiny (only 64MB total). The final output <em>O</em> is only 2MB. Why are you writing 17 GB of temporary trash to global memory?"</p>
             </div>
           </div>
         </div>
@@ -281,12 +281,12 @@
     <div class="wrap">
       <div class="eyebrow amber">Act 1 · Mathematical First Principles</div>
       <h2>The Trap: Softmax Needs Global State</h2>
-      <p class="lede">To avoid writing the $N \times N$ matrix to VRAM, we must compute attention in tiles. But standard softmax requires seeing every single token before calculating even one probability.</p>
+      <p class="lede">To avoid writing the <em>N</em> × <em>N</em> matrix to VRAM, we must compute attention in tiles. But standard softmax requires seeing every single token before calculating even one probability.</p>
 
       <div class="dialogue student">
         <div class="avatar s">Alex</div>
         <div class="speech">
-          <p>"Why can't I just process query 0 against key 0..127, compute softmax, and output it? Because what if key 8,191 contains a massive score of 500? If I don't know the maximum value of the row upfront, my exponentials $e^{500}$ will explode to infinity! Softmax has two global barriers."</p>
+          <p>"Why can't I just process query 0 against key 0..127, compute softmax, and output it? Because what if key 8,191 contains a massive score of 500? If I don't know the maximum value of the row upfront, my exponentials e<sup>500</sup> will explode to infinity! Softmax has two global barriers."</p>
         </div>
       </div>
 
@@ -294,7 +294,7 @@
         <div class="card">
           <span class="tag">Pass 1 · Row Max</span>
           <p class="mono" style="font-size: 15px; color: var(--amber); margin-top: 6px;">m = max<sub>j</sub>(S<sub>j</sub>)</p>
-          <p style="font-size: 12.5px; color: var(--muted); margin-top: 6px;">Prevents numerical overflow when evaluating $e^{S_j - m}$. Must scan all 8,192 values.</p>
+          <p style="font-size: 12.5px; color: var(--muted); margin-top: 6px;">Prevents numerical overflow when evaluating e<sup>(S<sub>j</sub> - m)</sup>. Must scan all 8,192 values.</p>
         </div>
         <div class="card">
           <span class="tag">Pass 2 · Denominator</span>
@@ -311,7 +311,7 @@
       <div class="dialogue teacher" style="margin-top: 16px;">
         <div class="avatar t">Dr. Chen</div>
         <div class="speech">
-          <p>"Suppose you process chunk 1 and calculate a local max $m_1$ and sum $l_1$. Then chunk 2 arrives with a larger max $m_2$. Can you fix your old sum without re-reading chunk 1 from VRAM?"</p>
+          <p>"Suppose you process chunk 1 and calculate a local max <em>m</em><sub>1</sub> and sum <em>l</em><sub>1</sub>. Then chunk 2 arrives with a larger max <em>m</em><sub>2</sub>. Can you fix your old sum without re-reading chunk 1 from VRAM?"</p>
         </div>
       </div>
     </div>
@@ -345,14 +345,14 @@
           <div class="dialogue aha">
             <div class="avatar g">Alex</div>
             <div class="speech">
-              <p>"Look at line 4! Because $e^{x - m_{new}} = e^{x - m_1} \cdot e^{m_1 - m_{new}}$, we just multiply our existing accumulator vector by $\alpha = e^{m_1 - m_{new}}$! <br><br><strong>We never have to store the attention scores.</strong> We compute the dot product, update $m$ and $l$, accumulate into $O$, and immediately discard $S$ from registers!"</p>
+              <p>"Look at line 4! Because e<sup>x - m<sub>new</sub></sup> = e<sup>x - m<sub>1</sub></sup> · e<sup>m<sub>1</sub> - m<sub>new</sub></sup>, we just multiply our existing accumulator vector by α = e<sup>m<sub>1</sub> - m<sub>new</sub></sup>! <br><br><strong>We never have to store the attention scores.</strong> We compute the dot product, update <em>m</em> and <em>l</em>, accumulate into <em>O</em>, and immediately discard <em>S</em> from registers!"</p>
             </div>
           </div>
 
           <div class="dialogue teacher">
             <div class="avatar t">Dr. Chen</div>
             <div class="speech">
-              <p>"Now you have broken the memory wall. FlashAttention is not an approximation. It produces the exact same floating-point output as standard attention, but with $O(1)$ memory."</p>
+              <p>"Now you have broken the memory wall. FlashAttention is not an approximation. It produces the exact same floating-point output as standard attention, but with <em>O</em>(1) memory."</p>
             </div>
           </div>
         </div>
@@ -385,7 +385,7 @@
       <div class="card" style="margin-top: 14px; background: var(--surface2);">
         <h3 style="font-size: 14px; color: var(--cyan);">Why this matters for CUDA:</h3>
         <p style="font-size: 13px; color: var(--muted); margin: 0;">
-          Notice that at no point did the algorithm allocate an array of size 4. It only ever maintained three scalar variables: <code class="k-a">m</code> (current max), <code class="k-c">l</code> (current denominator), and the vector <code class="k">O</code>. In a GPU, these live entirely inside a thread's <strong>private register file</strong> ($~1$ cycle access).
+          Notice that at no point did the algorithm allocate an array of size 4. It only ever maintained three scalar variables: <code class="k-a">m</code> (current max), <code class="k-c">l</code> (current denominator), and the vector <code class="k">O</code>. In a GPU, these live entirely inside a thread's <strong>private register file</strong> (~1 cycle access).
         </p>
       </div>
     </div>
@@ -396,14 +396,14 @@
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
       <h2>First Target: The Decode Phase</h2>
-      <p class="lede">Rather than jumping straight to the complex $N \times N$ prefill matrix, Alex tests the Online Softmax formula on token generation (Decode), where $Q$ is just 1 token.</p>
+      <p class="lede">Rather than jumping straight to the complex <em>N</em> × <em>N</em> prefill matrix, Alex tests the Online Softmax formula on token generation (Decode), where <em>Q</em> is just 1 token.</p>
 
       <div class="grid2">
         <div>
           <div class="dialogue student">
             <div class="avatar s">Alex</div>
             <div class="speech">
-              <p>"In Decode, we generate token 8,193. That means $Q$ is shape $[1 \times 64]$. It queries all 8,192 existing keys.<br><br>The memory is only $1 \times 8192 \times 4 = 32\text{ KB}$ per head, so it doesn't OOM. But why is it slow in PyTorch?"</p>
+              <p>"In Decode, we generate token 8,193. That means <em>Q</em> is shape [1 × 64]. It queries all 8,192 existing keys.<br><br>The memory is only 1 × 8192 × 4 = 32 KB per head, so it doesn't OOM. But why is it slow in PyTorch?"</p>
             </div>
           </div>
 
@@ -559,7 +559,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Full FlashAttention</div>
       <h2>Scaling to Prefill: 2D Matrix Tiling</h2>
-      <p class="lede">In Prefill, Query is not 1 token. It's an entire prompt of 8,192 tokens. How do we tile both $Q$ and $K$ into on-chip SRAM?</p>
+      <p class="lede">In Prefill, Query is not 1 token. It's an entire prompt of 8,192 tokens. How do we tile both <em>Q</em> and <em>K</em> into on-chip SRAM?</p>
 
       <div class="grid2">
         <div>
@@ -570,13 +570,13 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
               Grid: dim3(ceil(8192/128), 32 heads, 1 batch)<br>
               Block: dim3(128 threads)
             </div>
-            <p style="font-size: 12.5px; color: var(--muted);">Each block owns a horizontal stripe of 128 Queries. Each thread $tx \in [0..127]$ owns one row of $Q$.</p>
+            <p style="font-size: 12.5px; color: var(--muted);">Each block owns a horizontal stripe of 128 Queries. Each thread tx ∈ [0..127] owns one row of <em>Q</em>.</p>
           </div>
 
           <div class="dialogue teacher" style="margin-top: 12px;">
             <div class="avatar t">Dr. Chen</div>
             <div class="speech">
-              <p>"Now the block must iterate over all chunks of $K$ and $V$. Where do you put them while calculating the dot products?"</p>
+              <p>"Now the block must iterate over all chunks of <em>K</em> and <em>V</em>. Where do you put them while calculating the dot products?"</p>
             </div>
           </div>
         </div>
@@ -630,14 +630,14 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
           <div class="dialogue teacher">
             <div class="avatar t">Dr. Chen</div>
             <div class="speech">
-              <p>"The L4 has 99KB total, but static block allocations default to 48KB. Do you actually need $K$ and $V$ in shared memory at the same time?"</p>
+              <p>"The L4 has 99KB total, but static block allocations default to 48KB. Do you actually need <em>K</em> and <em>V</em> in shared memory at the same time?"</p>
             </div>
           </div>
 
           <div class="dialogue aha" style="margin-top: 12px;">
             <div class="avatar g">Alex</div>
             <div class="speech">
-              <p>"No! We only need $K$ to compute the dot products. Once we calculate the attention scores, $K$ is finished. <br><br><strong>We can reuse the exact same 32 KB shared memory buffer for $V$!</strong><br>32KB fits comfortably under the 48KB limit!"</p>
+              <p>"No! We only need <em>K</em> to compute the dot products. Once we calculate the attention scores, <em>K</em> is finished. <br><br><strong>We can reuse the exact same 32 KB shared memory buffer for <em>V</em>!</strong><br>32KB fits comfortably under the 48KB limit!"</p>
             </div>
           </div>
         </div>
@@ -650,7 +650,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     <div class="wrap">
       <div class="eyebrow amber">Act 3 · Warp Divergence Optimization</div>
       <h2>Causal Masking &amp; Warp Divergence</h2>
-      <p class="lede">Autoregressive LLMs cannot look into the future: token $i$ can only attend to tokens $j \le i$. How do we implement this without destroying GPU branch performance?</p>
+      <p class="lede">Autoregressive LLMs cannot look into the future: token <em>i</em> can only attend to tokens <em>j</em> ≤ <em>i</em>. How do we implement this without destroying GPU branch performance?</p>
 
       <div class="dialogue student">
         <div class="avatar s">Alex</div>
@@ -677,7 +677,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
       <div class="dialogue teacher" style="margin-top: 14px;">
         <div class="avatar t">Dr. Chen</div>
         <div class="speech">
-          <p>"Excellent. By pruning future chunks, you cut your total compute by exactly 50% ($N^2 / 2$), and 90% of your chunks execute 100% branchless."</p>
+          <p>"Excellent. By pruning future chunks, you cut your total compute by exactly 50% (<em>N</em>² / 2), and 90% of your chunks execute 100% branchless."</p>
         </div>
       </div>
     </div>
@@ -705,7 +705,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
           <div class="dialogue aha">
             <div class="avatar g">Alex</div>
             <div class="speech">
-              <p>"We completely defeated the $O(N^2)$ memory wall! The model processed the entire 8,192-token prompt smoothly without breaking a sweat!"</p>
+              <p>"We completely defeated the <em>O</em>(<em>N</em>²) memory wall! The model processed the entire 8,192-token prompt smoothly without breaking a sweat!"</p>
             </div>
           </div>
           <div class="dialogue teacher" style="margin-top: 12px;">
@@ -810,10 +810,10 @@ __shared__ float smem[128][64];
         <div class="card">
           <span class="tag" style="color: var(--green);">The 4 Architectural Pillars</span>
           <ul class="clean" style="margin-top: 10px;">
-            <li><strong>1 Thread = 1 Token:</strong> All 128 threads compute simultaneously. Thread $tx$ processes key $tx$.</li>
+            <li><strong>1 Thread = 1 Token:</strong> All 128 threads compute simultaneously. Thread <em>tx</em> processes key <em>tx</em>.</li>
             <li><strong>Bypass Shared Memory:</strong> Load keys directly from Global Memory into registers. Zero staging in SRAM!</li>
-            <li><strong>Tree Reduction:</strong> Block-wide reduction for max $m$ and sum $l$ using shared memory tree reduction in $\log_2(128) = 7$ steps.</li>
-            <li><strong>Parallel Transpose:</strong> Thread $tx$ writes its weighted $V$ vector to shared memory; threads $0..63$ each reduce along a column.</li>
+            <li><strong>Tree Reduction:</strong> Block-wide reduction for max <em>m</em> and sum <em>l</em> using shared memory tree reduction in log₂(128) = 7 steps.</li>
+            <li><strong>Parallel Transpose:</strong> Thread <em>tx</em> writes its weighted <em>V</em> vector to shared memory; threads 0..63 each reduce along a column.</li>
           </ul>
         </div>
 
@@ -888,7 +888,7 @@ __syncthreads();
         <div class="card" style="border-top: 3px solid var(--cyan);">
           <span class="tag" style="color: var(--cyan);">Prefill Phase · FlashAttention</span>
           <h3 style="margin-top: 8px;">Compute-Bound (High Arithmetic Intensity)</h3>
-          <p style="font-size: 13px; color: var(--muted);">Arithmetic intensity is $\approx \frac{128 \times 128}{128 + 128} = 64$ FLOPs/byte.</p>
+          <p style="font-size: 13px; color: var(--muted);">Arithmetic intensity is ≈ (128 × 128) / (128 + 128) = 64 FLOPs/byte.</p>
           <ul class="clean" style="font-size: 13px;">
             <li>SRAM data reuse is king.</li>
             <li>Tens of thousands of multiply-accumulate operations per load.</li>
@@ -899,7 +899,7 @@ __syncthreads();
         <div class="card" style="border-top: 3px solid var(--green);">
           <span class="tag" style="color: var(--green);">Decode Phase · FlashInfer / PagedAttn</span>
           <h3 style="margin-top: 8px;">Memory-Bound (Low Arithmetic Intensity)</h3>
-          <p style="font-size: 13px; color: var(--muted);">Arithmetic intensity is $\approx \frac{1 \times 128}{1 + 128} \approx 1$ FLOP/byte.</p>
+          <p style="font-size: 13px; color: var(--muted);">Arithmetic intensity is ≈ (1 × 128) / (1 + 128) ≈ 1 FLOP/byte.</p>
           <ul class="clean" style="font-size: 13px;">
             <li>VRAM memory bus saturation is king.</li>
             <li>Almost no arithmetic reuse; keys are read once and discarded.</li>
@@ -930,7 +930,7 @@ __syncthreads();
         <div class="card">
           <span class="tag">Chapter 3 · Prefill</span>
           <h3>FlashAttention</h3>
-          <p style="font-size: 13px; color: var(--muted);">Tiled $Q, K, V$ in 32KB shared memory. Eliminated the 8.5 GB intermediate matrix. Enabled 8,192+ token context.</p>
+          <p style="font-size: 13px; color: var(--muted);">Tiled <em>Q</em>, <em>K</em>, <em>V</em> in 32KB shared memory. Eliminated the 8.5 GB intermediate matrix. Enabled 8,192+ token context.</p>
         </div>
         <div class="card">
           <span class="tag">Chapter 3 · Decode</span>
@@ -957,11 +957,11 @@ __syncthreads();
 
       <div class="card" style="padding: 18px 22px;">
         <ol class="clean" style="gap: 12px; font-size: 14px;">
-          <li><strong>$O(N^2)$ Memory is a Choice, Not a Law of Physics:</strong> Intermediate attention matrices do not need to exist in VRAM. Online Softmax allows calculating the exact output in $O(1)$ memory.</li>
+          <li><strong><em>O</em>(<em>N</em>²) Memory is a Choice, Not a Law of Physics:</strong> Intermediate attention matrices do not need to exist in VRAM. Online Softmax allows calculating the exact output in <em>O</em>(1) memory.</li>
           <li><strong>Beware the "Cast Tax":</strong> Python-level type conversions (`bfloat16` to `float32`) take multiple milliseconds and will silently mask a 2x raw kernel speedup.</li>
-          <li><strong>Temporal SRAM Reuse Beats Static Limits:</strong> If $K$ and $V$ don't fit in shared memory at once, load $K$, compute dot products, and overwrite the same buffer with $V$.</li>
+          <li><strong>Temporal SRAM Reuse Beats Static Limits:</strong> If <em>K</em> and <em>V</em> don't fit in shared memory at once, load <em>K</em>, compute dot products, and overwrite the same buffer with <em>V</em>.</li>
           <li><strong>Confine Warp Divergence to the Diagonal:</strong> In causal masking, 90% of your chunks are strictly in the past and can run 100% branchless.</li>
-          <li><strong>Decode Demands Parallel Vectors, Not SRAM Loops:</strong> For $Q=1$, map 1 thread to 1 token, stream keys directly into registers, and reduce with fast tree shuffles.</li>
+          <li><strong>Decode Demands Parallel Vectors, Not SRAM Loops:</strong> For <em>Q</em> = 1, map 1 thread to 1 token, stream keys directly into registers, and reduce with fast tree shuffles.</li>
         </ol>
       </div>
 
