@@ -76,37 +76,20 @@
     code, .mono { font-family: var(--mono); }
     .k { color: var(--green); } .k-a { color: var(--amber); } .k-c { color: var(--cyan); } .k-v { color: var(--violet); } .k-r { color: var(--red); }
 
-    /* Dialogues */
-    .dialogue {
-      border-radius: 10px; padding: 13px 16px; margin: 10px 0; display: flex; gap: 14px;
-      align-items: flex-start; border: 1px solid var(--line); font-size: 14px; line-height: 1.5;
+    /* Socratic Flow */
+    .socratic-flow {
+      background: var(--surface2); border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px 16px; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px;
     }
-    .dialogue.teacher {
-      background: linear-gradient(90deg, var(--violet-dim), var(--surface));
-      border-left: 3px solid var(--violet);
+    .turn { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; color: #D6DEEB; }
+    .turn p { margin: 0; font-size: 13px; line-height: 1.5; }
+    .badge {
+      font-family: var(--display); font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
     }
-    .dialogue.student {
-      background: linear-gradient(90deg, var(--cyan-dim), var(--surface));
-      border-left: 3px solid var(--cyan);
-    }
-    .dialogue.aha {
-      background: linear-gradient(90deg, var(--green-dim), var(--surface));
-      border-left: 3px solid var(--green);
-    }
-    .dialogue.alarm {
-      background: linear-gradient(90deg, var(--red-dim), var(--surface));
-      border-left: 3px solid var(--red);
-    }
-    .avatar {
-      font-family: var(--display); font-weight: 700; font-size: 11px; text-transform: uppercase;
-      letter-spacing: .08em; padding: 4px 8px; border-radius: 6px; white-space: nowrap; flex-shrink: 0;
-    }
-    .avatar.t { background: var(--violet); color: #120b22; }
-    .avatar.s { background: var(--cyan); color: #071f28; }
-    .avatar.g { background: var(--green); color: #0a250f; }
-    .avatar.r { background: var(--red); color: #2e0808; }
-    .speech { flex: 1; }
-    .speech p { margin: 0; font-size: 13.5px; }
+    .badge.probe { background: var(--violet); color: #120b22; }
+    .badge.solve { background: var(--cyan); color: #071f28; }
+    .badge.nudge { background: var(--amber); color: #2e1a05; }
 
     /* Layout Elements */
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
@@ -199,7 +182,7 @@
 <div id="deck">
   <div id="rail"><div class="fill"></div></div>
 
-  <!-- SLIDE 1: PROLOGUE  -->
+  <!-- SLIDE 1: PROLOGUE -->
   <section class="slide" data-title="Prologue">
     <div class="wrap">
       <div class="eyebrow violet">Silicon &amp; Socratic Derivation</div>
@@ -207,17 +190,13 @@
       <p class="lede">How a first-principles derivation of Online Softmax rescued an 8,192-token prompt from a catastrophic CUDA OOM and beat NVIDIA's native cuBLAS by 2.32x.</p>
       
       <div class="grid2" style="margin-top: 24px;">
-        <div class="dialogue teacher">
-          <div class="avatar t">Dr. Chen</div>
-          <div class="speech">
-            <p><strong>Senior GPU Architect</strong><br>"Every byte written to HBM is an engineering failure if it could have lived in registers. Don't memorize Tri Dao's paper. Derive it from memory physics."</p>
-          </div>
+        <div class="card" style="border-left: 3px solid var(--violet);">
+          <span class="badge probe">Dr. Chen · Senior GPU Architect</span>
+          <p style="margin-top: 8px; font-size: 13.5px; color: var(--text);">"Every byte written to HBM is an engineering failure if it could have lived in registers. Don't memorize Tri Dao's paper. Derive it from memory physics."</p>
         </div>
-        <div class="dialogue student">
-          <div class="avatar s">Alex</div>
-          <div class="speech">
-            <p><strong>Systems Engineer (CUDA 101 Graduate)</strong><br>"I know thread blocks, warps, and how to fuse RMSNorm. But our LLaMA-3.2-1B model just hit an 8,192-token context and crashed my 24GB L4 GPU. Let's fix it."</p>
-          </div>
+        <div class="card" style="border-left: 3px solid var(--cyan);">
+          <span class="badge solve">Alex · Systems Engineer</span>
+          <p style="margin-top: 8px; font-size: 13.5px; color: var(--text);">"I know thread blocks, warps, and how to fuse RMSNorm. But our LLaMA-3.2-1B model just hit an 8,192-token context and crashed my 24GB L4 GPU. Let's fix it."</p>
         </div>
       </div>
       
@@ -229,7 +208,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 2: ANATOMY OF ATTENTION (ONE HEAD, ROW BY ROW)  -->
+  <!-- SLIDE 2: ANATOMY OF ATTENTION (ONE HEAD, ROW BY ROW) -->
   <section class="slide" data-title="Anatomy of Attention">
     <div class="wrap">
       <div class="eyebrow cyan">Act 1 · Mathematical Anatomy</div>
@@ -271,25 +250,24 @@
         </div>
       </div>
 
-      <div class="grid2" style="margin-top: 14px;">
-        <div class="dialogue teacher">
-          <div class="avatar t">Dr. Chen</div>
-          <div class="speech">
-            <p>"Look at the mechanics: output row <em>O<sub>i</sub></em> only depends on query row <em>i</em> and the key/value matrices. Token <em>i</em> never needs to see token <em>i+1</em>'s attention scores! So where does the memory explosion come from?"</p>
-          </div>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>Output row <em>O<sub>i</sub></em> only depends on query row <em>i</em> and the key/value matrices. Tokens are computed independently. Why does materializing this matrix explode memory?</p>
         </div>
-
-        <div class="dialogue student">
-          <div class="avatar s">Alex</div>
-          <div class="speech">
-            <p>"Because when we scale this from 1 head to 32 heads, PyTorch doesn't compute row by row. It computes and materializes all 8,192 rows for all 32 heads in global memory simultaneously! Let's see the math of the crash."</p>
-          </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>Because when scaling to 32 heads, PyTorch doesn't compute row by row. It materializes all 8,192 rows for all 32 heads in global VRAM simultaneously (17.16 GB)! If we tile row-by-row, we never need the full matrix in memory.</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>Correct. But before we tile, see what happens when naive PyTorch runs all 32 heads at once.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 3: THE CATASTROPHE  -->
+  <!-- SLIDE 3: THE CATASTROPHE -->
   <section class="slide" data-title="The Memory Wall">
     <div class="wrap">
       <div class="eyebrow red">Act 1 · The Crime Scene</div>
@@ -304,13 +282,6 @@
     <span class="err">scores = torch.matmul(Q, K.transpose(-2, -1)) / 8.0</span>
     <span class="err">probs = torch.softmax(scores, dim=-1)</span>
     <span class="kw">return</span> torch.matmul(probs, V)</pre>
-
-          <div class="dialogue student">
-            <div class="avatar s">Alex</div>
-            <div class="speech">
-              <p>"I ran this on 8,192 tokens. Python threw: <br><code class="k-r">torch.OutOfMemoryError: Tried to allocate 8.00 GiB</code>.<br>Why does a 1B parameter model need 8.5GB for one attention layer?!"</p>
-            </div>
-          </div>
         </div>
 
         <div>
@@ -324,31 +295,32 @@
             </div>
             <p style="font-size: 12.5px; color: var(--muted);">On a 24GB L4 GPU, once KV cache, model weights, and activations are loaded, materializing this 17GB matrix triggers an immediate crash.</p>
           </div>
+        </div>
+      </div>
 
-          <div class="dialogue teacher">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"The actual inputs <em>Q</em>, <em>K</em>, <em>V</em> are tiny (only 64MB total). The final output <em>O</em> is only 2MB. Why are you writing 17 GB of temporary trash to global memory?"</p>
-            </div>
-          </div>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>The actual inputs <em>Q</em>, <em>K</em>, <em>V</em> are tiny (64MB total); the final output <em>O</em> is only 2MB. How do we compute Attention in tiles without writing that 17 GB intermediate matrix to global VRAM?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>We must stream keys in small chunks into fast on-chip SRAM (Shared Memory), compute attention, and accumulate directly into registers!</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>Softmax requires global row state to normalize. How do you compute it incrementally?</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 4: DECONSTRUCTING SOFTMAX  -->
+  <!-- SLIDE 4: DECONSTRUCTING SOFTMAX -->
   <section class="slide" data-title="Deconstructing Softmax">
     <div class="wrap">
       <div class="eyebrow amber">Act 1 · Mathematical First Principles</div>
       <h2>The Trap: Softmax Needs Global State</h2>
       <p class="lede">To avoid writing the <em>N</em> × <em>N</em> matrix to VRAM, we must compute attention in tiles. But standard softmax requires seeing every single token before calculating even one probability.</p>
-
-      <div class="dialogue student">
-        <div class="avatar s">Alex</div>
-        <div class="speech">
-          <p>"Why can't I just process query 0 against key 0..127, compute softmax, and output it? Because what if key 8,191 contains a massive score of 500? If I don't know the maximum value of the row upfront, my exponentials e<sup>500</sup> will explode to infinity! Softmax has two global barriers."</p>
-        </div>
-      </div>
 
       <div class="grid3" style="margin-top: 14px;">
         <div class="card">
@@ -368,16 +340,24 @@
         </div>
       </div>
 
-      <div class="dialogue teacher" style="margin-top: 16px;">
-        <div class="avatar t">Dr. Chen</div>
-        <div class="speech">
-          <p>"Suppose you process chunk 1 and calculate a local max <em>m</em><sub>1</sub> and sum <em>l</em><sub>1</sub>. Then chunk 2 arrives with a larger max <em>m</em><sub>2</sub>. Can you fix your old sum without re-reading chunk 1 from VRAM?"</p>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>To stream in tiles, you must compute Softmax incrementally. But what happens if chunk 2 contains a larger value than chunk 1?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>We don't need to re-read chunk 1! We just scale our old sum and accumulator by the exponential difference α = e<sup>(m<sub>prev</sub> - m<sub>new</sub>)</sup>!</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>Write down the exact update equations for the streaming loop.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 5: ONLINE SOFTMAX DERIVATION  -->
+  <!-- SLIDE 5: ONLINE SOFTMAX DERIVATION -->
   <section class="slide" data-title="Online Softmax">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · The Mathematical Key</div>
@@ -402,25 +382,33 @@
         </div>
 
         <div>
-          <div class="dialogue aha">
-            <div class="avatar g">Alex</div>
-            <div class="speech">
-              <p>"Look at steps 3 and 4! Because we find <em>m</em><sub>new</sub> first, the new chunk evaluates its exponentials directly against <em>m</em><sub>new</sub>.<br><br><strong>The new chunk never needs rescaling!</strong> Only the past running accumulator is scaled down by α. We never materialize <em>S</em>—everything updates inside 3 scalar registers!"</p>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>When a new chunk arrives with raw dot products, does the new chunk need rescaling?</p>
+            </div>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>No! We update to <em>m</em><sub>new</sub> first. The new chunk evaluates its exponentials directly against <em>m</em><sub>new</sub>. ONLY the past accumulated state gets scaled down by α!</p>
+            </div>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>Precisely. The only time you scale both chunks is in a parallel tree reduction (like Split-K Stage 2). In FlashAttention's streaming loop, the new chunk is always computed directly at the latest max.</p>
             </div>
           </div>
 
-          <div class="dialogue teacher">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"Precisely. The only time you scale both chunks is in a parallel tree reduction (like Split-K Stage 2 where separate thread blocks ran in parallel). In FlashAttention's streaming loop, the new chunk is always computed directly at the latest max."</p>
-            </div>
+          <div class="card" style="margin-top: 14px; background: var(--surface2);">
+            <span class="tag" style="color: var(--cyan);">Core Takeaway</span>
+            <p style="font-size: 13px; color: var(--muted); margin: 6px 0 0;">
+              <strong>We never store the attention scores matrix.</strong> We compute dot products, update <em>m</em> and <em>l</em>, accumulate into <em>O</em>, and discard <em>S</em> from registers immediately!
+            </p>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 6: INTERACTIVE ONLINE SOFTMAX WIDGET  -->
+  <!-- SLIDE 6: INTERACTIVE ONLINE SOFTMAX WIDGET -->
   <section class="slide" data-title="Online Softmax Lab">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · Interactive Verification</div>
@@ -451,7 +439,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 7: FIRST TEST: DECODE PHASE  -->
+  <!-- SLIDE 7: FIRST TEST: DECODE PHASE -->
   <section class="slide" data-title="Decode Phase Plan">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
@@ -460,33 +448,35 @@
 
       <div class="grid2">
         <div>
-          <div class="dialogue student">
-            <div class="avatar s">Alex</div>
-            <div class="speech">
-              <p>"In Decode, we generate token 8,193. That means <em>Q</em> is shape [1 × 64]. It queries all 8,192 existing keys.<br><br>The memory is only 1 × 8192 × 4 = 32 KB per head, so it doesn't OOM. But why is it slow in PyTorch?"</p>
-            </div>
-          </div>
-
-          <div class="dialogue teacher">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"Look at the hardware. An NVIDIA L4 has 58 SMs. With 32 attention heads and batch size 1, standard attention only creates 32 thread blocks. <strong>Almost half the GPU sits idle!</strong><br><br>How do you parallelize 1 query across 8,192 keys?"</p>
-            </div>
-          </div>
-        </div>
-
-        <div>
           <div class="card">
             <h3>The Parallelization Strategy: Split-K</h3>
-            <p style="font-size: 13.5px;">Instead of one block doing all 8,192 keys, split the sequence into chunks of 128!</p>
+            <p style="font-size: 13.5px;">In Decode, <em>Q</em> is shape [1 × 64], querying 8,192 existing keys.</p>
             <ul class="mut" style="font-size: 13px; padding-left: 18px; line-height: 1.6;">
               <li><strong style="color: var(--cyan);">8192 keys / 128 = 64 chunks</strong></li>
               <li>Launch <span class="mono k-c">64 chunks × 32 heads = 2,048 blocks</span>!</li>
               <li>Every SM is now completely saturated with work.</li>
               <li>Each block produces a partial output: <code class="k">partial_O</code>, <code class="k-a">partial_m</code>, and <code class="k-c">partial_l</code>.</li>
             </ul>
-            <div class="callout green" style="margin-top: 10px; font-size: 12.5px;">
-              <strong>Causal Masking Nuance:</strong> We are at token 8,193. Are any of the 8,192 keys in the future? <em>No!</em> Decode requires zero causal masking.
+          </div>
+        </div>
+
+        <div>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>In Decode, launching 32 blocks for 32 heads leaves almost half of our 58 SMs completely idle. How do we saturate the chip?</p>
+            </div>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>Split-K! Partition the 8,192 keys along the sequence into chunks of 128. Launch 2,048 blocks in Stage 1 to saturate all 58 SMs, then merge partial summaries in Stage 2!</p>
+            </div>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>Do we need causal masking here?</p>
+            </div>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>No. Token 8,193 only attends to past prompt tokens 0..8,192. Zero causal masking in Decode.</p>
             </div>
           </div>
         </div>
@@ -494,7 +484,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 8: SPLIT-K ARCHITECTURE  -->
+  <!-- SLIDE 8: SPLIT-K ARCHITECTURE -->
   <section class="slide" data-title="Split-K Architecture">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
@@ -525,16 +515,20 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
         </div>
       </div>
 
-      <div class="dialogue student" style="margin-top: 14px;">
-        <div class="avatar s">Alex</div>
-        <div class="speech">
-          <p>"The code compiles and runs! But when I tested it in Python, something went horribly wrong..."</p>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>Stage 2 combines 64 partial outputs. What formula does it use?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>The parallel Online Softmax reduction! Each partial chunk is rescaled to the global head max and merged.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 9: THE MISSING SPEEDUP BUG  -->
+  <!-- SLIDE 9: THE MISSING SPEEDUP BUG -->
   <section class="slide" data-title="The Mystery Bug">
     <div class="wrap">
       <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
@@ -551,33 +545,29 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
               <tr class="loss"><td>Our Custom Split-K</td><td>2.48 ms (4.7x SLOWER!)</td></tr>
             </table>
           </div>
-
-          <div class="dialogue student" style="margin-top: 14px;">
-            <div class="avatar s">Alex</div>
-            <div class="speech">
-              <p>"I don't understand! We parallelized across 2,048 blocks, used fast shared memory, and avoided global barriers. Why is PyTorch reporting that we are nearly 5x slower?!"</p>
-            </div>
-          </div>
         </div>
 
         <div>
-          <div class="dialogue teacher">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"Never trust high-level Python timestamps when evaluating CUDA kernels. Write an isolated C++ benchmark (`verify_kernels.py`) and measure raw hardware execution on the GPU stream."</p>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>PyTorch says your Split-K kernel is 4.7x slower. Is the CUDA kernel actually slow on silicon?</p>
             </div>
-          </div>
-
-          <div class="card" style="margin-top: 14px; background: var(--surface2);">
-            <span class="tag">The Forensic Test</span>
-            <p style="font-size: 13px; margin-top: 6px;">We isolated the raw CUDA kernel from the Python wrapper and timed it with native CUDA events. What did the silicon actually report?</p>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>Never trust Python timestamps. I wrote an isolated C++ benchmark (`verify_kernels.py`) with native CUDA events to measure the bare hardware execution.</p>
+            </div>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>Let's look at what the silicon actually reported.</p>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 10: THE BFLOAT16 CAST TAX  -->
+  <!-- SLIDE 10: THE BFLOAT16 CAST TAX -->
   <section class="slide" data-title="The Cast Tax">
     <div class="wrap">
       <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
@@ -605,16 +595,24 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
         </div>
       </div>
 
-      <div class="dialogue aha" style="margin-top: 14px;">
-        <div class="avatar g">Alex</div>
-        <div class="speech">
-          <p>"The 2.17ms casting overhead was completely swallowing our 0.108ms kernel speedup! This proves our Split-K math works on hardware. Now let's tackle the real beast: Prefill."</p>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>Where was the 2.4 ms delay coming from?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>LLaMA weights are BFloat16; our C++ kernel took Float32. The Python casting loop was allocating and copying 64 MB every single token step! The kernel itself was flying at 0.108 ms.</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>Now scale the verified Online Softmax logic to full Prefill.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 11: PREFILL DERIVATION  -->
+  <!-- SLIDE 11: PREFILL DERIVATION -->
   <section class="slide" data-title="Tiling Prefill">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Full FlashAttention</div>
@@ -630,14 +628,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
               Grid: dim3(ceil(8192/128), 32 heads, 1 batch)<br>
               Block: dim3(128 threads)
             </div>
-            <p style="font-size: 12.5px; color: var(--muted);">Each block owns a horizontal stripe of 128 Queries. Each thread tx ∈ [0..127] owns one row of <em>Q</em>.</p>
-          </div>
-
-          <div class="dialogue teacher" style="margin-top: 12px;">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"Now the block must iterate over all chunks of <em>K</em> and <em>V</em>. Where do you put them while calculating the dot products?"</p>
-            </div>
+            <p style="font-size: 12.5px; color: var(--muted);">Each block owns a horizontal stripe of 128 Queries. Each thread <em>tx</em> ∈ [0..127] owns one row of <em>Q</em>.</p>
           </div>
         </div>
 
@@ -662,10 +653,21 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
 }</pre>
         </div>
       </div>
+
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>In Prefill, <em>Q</em> is 8,192 tokens. How do we map this to blocks?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>Tile <em>Q</em> into 128 queries per block. The block keeps <em>Q</em> in registers and loops through <em>K</em> and <em>V</em> chunks in shared memory!</p>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- SLIDE 12: THE 48KB SRAM TRAP  -->
+  <!-- SLIDE 12: THE 48KB SRAM TRAP -->
   <section class="slide" data-title="The 48KB SRAM Trap">
     <div class="wrap">
       <div class="eyebrow red">Act 3 · Hardware Constraints</div>
@@ -687,17 +689,18 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
         </div>
 
         <div>
-          <div class="dialogue teacher">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"The L4 has 99KB total, but static block allocations default to 48KB. Do you actually need <em>K</em> and <em>V</em> in shared memory at the same time?"</p>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>Static shared memory is capped at 48 KB. <em>K</em> (32 KB) + <em>V</em> (32 KB) = 64 KB. How do you fit without shrinking chunk size?</p>
             </div>
-          </div>
-
-          <div class="dialogue aha" style="margin-top: 12px;">
-            <div class="avatar g">Alex</div>
-            <div class="speech">
-              <p>"No! We only need <em>K</em> to compute the dot products. Once we calculate the attention scores, <em>K</em> is finished. <br><br><strong>We can reuse the exact same 32 KB shared memory buffer for <em>V</em>!</strong><br>32KB fits comfortably under the 48KB limit!"</p>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>Temporal Buffer Reuse! <em>K</em> is only used for dot products. Once scores are computed, reuse the exact same 32 KB buffer for <em>V</em>!</p>
+            </div>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>What about causal masking inside the loop?</p>
             </div>
           </div>
         </div>
@@ -705,19 +708,12 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 13: CAUSAL MASKING NUANCE  -->
+  <!-- SLIDE 13: CAUSAL MASKING NUANCE -->
   <section class="slide" data-title="Causal Masking Nuance">
     <div class="wrap">
       <div class="eyebrow amber">Act 3 · Warp Divergence Optimization</div>
       <h2>Causal Masking &amp; Warp Divergence</h2>
       <p class="lede">Autoregressive LLMs cannot look into the future: token <em>i</em> can only attend to tokens <em>j</em> ≤ <em>i</em>. How do we implement this without destroying GPU branch performance?</p>
-
-      <div class="dialogue student">
-        <div class="avatar s">Alex</div>
-        <div class="speech">
-          <p>"If I put <code class="mono">if (key_col > query_row) score = -1e20f;</code> inside the inner loop, all 32 threads in a warp will diverge! Some threads will take the branch, others won't, cutting warp throughput in half."</p>
-        </div>
-      </div>
 
       <div class="grid3" style="margin-top: 14px;">
         <div class="card" style="border-top: 3px solid var(--green);">
@@ -734,16 +730,24 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
         </div>
       </div>
 
-      <div class="dialogue teacher" style="margin-top: 14px;">
-        <div class="avatar t">Dr. Chen</div>
-        <div class="speech">
-          <p>"Excellent. By pruning future chunks, you cut your total compute by exactly 50% (<em>N</em>² / 2), and 90% of your chunks execute 100% branchless."</p>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>If threads branch on `if (col > row)` inside every chunk, warps diverge. How do we eliminate divergence?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>Past chunks (<em>j</em> &lt; <em>i</em>) are 100% branchless. Future chunks (<em>j</em> &gt; <em>i</em>) are pruned entirely. Only the diagonal chunk (<em>j</em> == <em>i</em>) runs the causal branch!</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>By pruning future chunks, you cut total compute by 50% (<em>N</em>² / 2) with zero divergence on 90% of chunks.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 14: PREFILL BENCHMARK TRIUMPH  -->
+  <!-- SLIDE 14: PREFILL BENCHMARK TRIUMPH -->
   <section class="slide" data-title="Prefill Benchmark">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Breakthrough</div>
@@ -762,16 +766,14 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
         </div>
 
         <div>
-          <div class="dialogue aha">
-            <div class="avatar g">Alex</div>
-            <div class="speech">
-              <p>"We completely defeated the <em>O</em>(<em>N</em>²) memory wall! The model processed the entire 8,192-token prompt smoothly without breaking a sweat!"</p>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>We conquered the memory wall! Prefill ran in 294 ms with 0 GB extra VRAM.</p>
             </div>
-          </div>
-          <div class="dialogue teacher" style="margin-top: 12px;">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"Prefill is conquered. But look closely at the benchmark log for the Decode phase that ran right after..."</p>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>Prefill succeeded. But now run Decode on that same 8,192 context...</p>
             </div>
           </div>
         </div>
@@ -779,7 +781,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 15: THE 156MS DECODE DISASTER  -->
+  <!-- SLIDE 15: THE 156MS DECODE DISASTER -->
   <section class="slide" data-title="Decode Disaster">
     <div class="wrap">
       <div class="eyebrow red">Act 4 · The Reality Check</div>
@@ -796,40 +798,8 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
               <tr class="loss"><td>Our Custom Decode</td><td>156.04 ms</td><td>4.87 ms (3x SLOWER!)</td></tr>
             </table>
           </div>
-
-          <div class="dialogue student" style="margin-top: 14px;">
-            <div class="avatar s">Alex</div>
-            <div class="speech">
-              <p>"Why did our custom kernel lose to PyTorch cuBLAS in Decode after beating it in Prefill? We're taking nearly 5 ms per token!"</p>
-            </div>
-          </div>
         </div>
 
-        <div>
-          <div class="dialogue teacher">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"Let's do a forensic code review of your `splitk_decode_stage1` kernel. Look at how your threads are executing the math."</p>
-            </div>
-          </div>
-
-          <div class="card" style="margin-top: 14px; background: var(--surface2);">
-            <span class="tag" style="color: var(--amber);">Hint</span>
-            <p style="font-size: 13px; margin: 4px 0 0;">Did all 128 threads in your block do the work, or did you accidentally write a sequential CPU loop inside GPU silicon?</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SLIDE 16: FORENSIC CODE REVIEW  -->
-  <section class="slide" data-title="Forensic Code Review">
-    <div class="wrap">
-      <div class="eyebrow red">Act 4 · Post-Mortem Analysis</div>
-      <h2>Post-Mortem: The Serial Execution Blunder</h2>
-      <p class="lede">A line-by-line inspection of our first Decode kernel revealed two critical architectural design flaws.</p>
-
-      <div class="grid2">
         <div>
           <pre class="code"><span class="cm">// The fatal flaw in splitk_decode_stage1:</span>
 __shared__ float smem[128][64];
@@ -843,23 +813,30 @@ __shared__ float smem[128][64];
 <span class="err">    }</span>
 <span class="err">}</span></pre>
         </div>
+      </div>
 
-        <div>
-          <div class="card" style="border-left: 3px solid var(--red);">
-            <h3 style="color: var(--red);">Flaw 1: Thread 0 Did 100% of the Work</h3>
-            <p style="font-size: 13px; color: var(--muted);">We launched 128 threads, but used <code class="mono">if (tx == 0)</code> for the dot products. <strong>Thread 0 ran 128 sequential dot products while 127 threads sat completely idle!</strong> It was a CPU loop running on a GPU.</p>
-          </div>
-
-          <div class="card" style="border-left: 3px solid var(--amber); margin-top: 10px;">
-            <h3 style="color: var(--amber);">Flaw 2: SRAM Overhead on 1 Query</h3>
-            <p style="font-size: 13px; color: var(--muted);">In Prefill, shared memory provides 128x reuse because 128 queries reuse each key. In Decode, there is only 1 query! Staging keys through shared memory provided zero reuse and added latency.</p>
-          </div>
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>Your Decode kernel is 4x slower than PyTorch cuBLAS. Look at line 12 of `splitk_decode_stage1`. What are threads 1..127 doing?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>They were sitting idle! `if (tx == 0)` forced Thread 0 to run all 128 dot products sequentially. It was a sequential CPU loop running on a GPU!</p>
+        </div>
+        <div class="turn">
+          <span class="badge nudge">Dr. Chen (Nudge)</span>
+          <p>And why is staging keys in Shared Memory wasteful for 1 query?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>Because with 1 query, keys are read once and never reused! SRAM provides zero benefit and adds latency.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 17: THE HARDWARE FIX: WARP DECODE  -->
+  <!-- SLIDE 16: THE HARDWARE FIX: WARP DECODE -->
   <section class="slide" data-title="Warp Decode Architecture">
     <div class="wrap">
       <div class="eyebrow green">Act 5 · The Redemption</div>
@@ -894,10 +871,21 @@ __syncthreads();
 }</pre>
         </div>
       </div>
+
+      <div class="socratic-flow">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>How do you restructure the kernel to treat the GPU as a parallel vector machine?</p>
+        </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>1 Thread = 1 Token! All 128 threads load keys directly from Global Memory into registers, compute dots in parallel, and reduce across warps in 7 steps!</p>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- SLIDE 18: FINAL BENCHMARK RESULTS  -->
+  <!-- SLIDE 17: FINAL BENCHMARK RESULTS -->
   <section class="slide" data-title="The Final Benchmark">
     <div class="wrap">
       <div class="eyebrow green">Act 5 · Silicon Verification</div>
@@ -919,17 +907,18 @@ __syncthreads();
         </div>
 
         <div>
-          <div class="dialogue aha">
-            <div class="avatar g">Alex</div>
-            <div class="speech">
-              <p>"We beat cuBLAS by 2.3x! Why? Because PyTorch had to launch 5 separate kernels per token (<code class="mono">repeat_interleave</code> → <code class="mono">matmul</code> → <code class="mono">masked_fill</code> → <code class="mono">softmax</code> → <code class="mono">matmul</code>). Our fused kernel does the whole sequence in a single pass!"</p>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>Why did our custom kernel beat NVIDIA's proprietary cuBLAS by 2.32x?</p>
             </div>
-          </div>
-
-          <div class="dialogue teacher" style="margin-top: 12px;">
-            <div class="avatar t">Dr. Chen</div>
-            <div class="speech">
-              <p>"You have created a complete inference engine: immune to VRAM crashes in Prefill, and faster than proprietary vendor libraries in Decode."</p>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>PyTorch launched 5 separate kernels per token (`repeat_interleave` → `matmul` → `masked_fill` → `softmax` → `matmul`). Our fused warp kernel computes dot products, tree reduction, and accumulation in a single fused pass!</p>
+            </div>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>You have created a complete inference engine: immune to VRAM crashes in Prefill, and faster than proprietary vendor libraries in Decode.</p>
             </div>
           </div>
         </div>
@@ -937,7 +926,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 19: COMPUTE VS MEMORY BOUND  -->
+  <!-- SLIDE 18: COMPUTE VS MEMORY BOUND -->
   <section class="slide" data-title="Architectural Synthesis">
     <div class="wrap">
       <div class="eyebrow violet">Act 6 · The Fundamental Theory</div>
@@ -974,7 +963,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 20: THE FULL STACK  -->
+  <!-- SLIDE 19: THE FULL STACK -->
   <section class="slide" data-title="The Full LLM Stack">
     <div class="wrap">
       <div class="eyebrow cyan">Act 6 · Putting It All Together</div>
@@ -1008,7 +997,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 21: EPILOGUE & TAKEAWAYS  -->
+  <!-- SLIDE 20: EPILOGUE & TAKEAWAYS -->
   <section class="slide" data-title="Epilogue">
     <div class="wrap">
       <div class="eyebrow green">Epilogue · Engineering Rules</div>
@@ -1025,18 +1014,14 @@ __syncthreads();
         </ol>
       </div>
 
-      <div class="grid2" style="margin-top: 16px;">
-        <div class="dialogue teacher">
-          <div class="avatar t">Dr. Chen</div>
-          <div class="speech">
-            <p>"You didn't just optimize code. You derived an algorithm by listening to the memory hierarchy. That's real GPU engineering."</p>
-          </div>
+      <div class="socratic-flow" style="margin-top: 16px;">
+        <div class="turn">
+          <span class="badge probe">Dr. Chen (Probe)</span>
+          <p>You didn't just optimize code. You derived an algorithm by listening to the memory hierarchy. What is the fundamental lesson?</p>
         </div>
-        <div class="dialogue student">
-          <div class="avatar s">Alex</div>
-          <div class="speech">
-            <p>"From a crashing 8.5 GB OOM to a 15.9 ms decode time. Ready for PagedAttention in Chapter 4!"</p>
-          </div>
+        <div class="turn">
+          <span class="badge solve">Alex (Solution)</span>
+          <p>Memory movement, not arithmetic, dictates GPU performance. From an 8.5 GB OOM crash to a 15.9 ms decode time—ready for PagedAttention in Chapter 4!</p>
         </div>
       </div>
     </div>
