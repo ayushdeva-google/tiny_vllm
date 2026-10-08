@@ -439,24 +439,45 @@
     </div>
   </section>
 
-  <!-- SLIDE 7: FIRST TEST: DECODE PHASE  -->
-  <section class="slide" data-title="Decode Phase Plan">
+  <!-- SLIDE 7: FIRST TEST: DECODE PHASE WITHOUT SPLIT-K  -->
+  <section class="slide" data-title="Naive Decode Trap">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
-      <h2>First Target: The Decode Phase</h2>
-      <p class="lede">Rather than jumping straight to the complex <em>N</em> × <em>N</em> prefill matrix, Alex tests the Online Softmax formula on token generation (Decode), where <em>Q</em> is just 1 token.</p>
+      <h2>First Target: Naive Decode &amp; The SM Starvation Trap</h2>
+      <p class="lede">Rather than jumping straight to the complex <em>N</em> × <em>N</em> prefill matrix, Alex implements Online Softmax on token generation (Decode), where <em>Q</em> is just 1 token. But the initial benchmark is alarming.</p>
 
       <div class="grid2">
         <div>
-          <div class="card">
-            <h3>The Parallelization Strategy: Split-K</h3>
-            <p style="font-size: 13.5px;">In Decode, <em>Q</em> is shape [1 × 64], querying 8,192 existing keys.</p>
-            <ul class="mut" style="font-size: 13px; padding-left: 18px; line-height: 1.6;">
-              <li><strong style="color: var(--cyan);">8192 keys / 128 = 64 chunks</strong></li>
-              <li>Launch <span class="mono k-c">64 chunks × 32 heads = 2,048 blocks</span>!</li>
-              <li>Every SM is now completely saturated with work.</li>
-              <li>Each block produces a partial output: <code class="k">partial_O</code>, <code class="k-a">partial_m</code>, and <code class="k-c">partial_l</code>.</li>
-            </ul>
+          <div class="card" style="border-color: var(--red);">
+            <h3 style="color: var(--red);">The 1-Block-per-Head Baseline</h3>
+            <p style="font-size: 13px;">Alex maps 1 thread block to each attention head: <span class="mono">Grid: (32 heads, 1 batch)</span>. Each block loops through all 8,192 keys sequentially using Online Softmax.</p>
+
+            <table class="bench" style="margin-top: 10px;">
+              <thead>
+                <tr>
+                  <th>Implementation</th>
+                  <th>Kernel Latency</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="win">
+                  <td>PyTorch Native cuBLAS</td>
+                  <td>0.083 ms</td>
+                  <td>Baseline (1.00x)</td>
+                </tr>
+                <tr class="loss">
+                  <td>Naive Decode (No Split-K)</td>
+                  <td>0.212 ms</td>
+                  <td>2.55x SLOWER!</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
+              <strong>The Hardware Trap: Wave Starvation</strong><br>
+              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) completely dark and idle</strong>! The active blocks must grind through 8,192 tokens sequentially.
+            </div>
           </div>
         </div>
 
@@ -464,19 +485,19 @@
           <div class="socratic-flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>In Decode, launching 32 blocks for 32 heads leaves almost half of our 58 SMs completely idle. How do we saturate the chip?</p>
+              <p>Your naive custom decode kernel is 2.5x slower than PyTorch cuBLAS. Why is the silicon underperforming?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
-              <p>Split-K! Partition the 8,192 keys along the sequence into chunks of 128. Launch 2,048 blocks in Stage 1 to saturate all 58 SMs, then merge partial summaries in Stage 2!</p>
+              <p>Wave starvation! Batch=1 with 32 heads launches only 32 thread blocks. Our GPU has 58 SMs, so 26 SMs sit completely idle while the active ones grind through 8,192 tokens sequentially in a single loop.</p>
             </div>
             <div class="turn">
               <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Do we need causal masking here?</p>
+              <p>If <em>Q</em> has only 1 token, where can you find more parallel work to saturate all 58 SMs?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
-              <p>No. Token 8,193 only attends to past prompt tokens 0..8,192. Zero causal masking in Decode.</p>
+              <p>Along the sequence (<em>K</em>) dimension! Partition the 8,192 keys into chunks of 128 and parallelize <em>K</em> across the GPU: Split-K decoding!</p>
             </div>
           </div>
         </div>
@@ -488,48 +509,54 @@
   <section class="slide" data-title="Split-K Architecture">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
-      <h2>Split-K Decode Architecture</h2>
-      <p class="lede">A two-stage kernel pipeline: Stage 1 distributes chunks across the entire GPU; Stage 2 merges them using Online Softmax.</p>
+      <h2>The Solution: Split-K Decode Architecture</h2>
+      <p class="lede">To saturate all 58 SMs, Alex splits the sequence into 64 chunks of 128 keys. Stage 1 distributes 2,048 blocks across the entire GPU; Stage 2 merges them in thread registers.</p>
 
       <div class="grid2">
         <div class="card" style="border-top: 3px solid var(--cyan);">
-          <span class="tag" style="color: var(--cyan);">Stage 1 · 2,048 Blocks</span>
+          <span class="tag" style="color: var(--cyan);">Stage 1 · 2,048 Blocks (Saturate All SMs)</span>
           <h3 style="margin-top: 8px;">Grid: (64 chunks, 32 heads, 1 batch)</h3>
-          <p style="font-size: 13px;">Each block loads 128 keys and 128 values. Computes local attention scores against the single broadcasted Query.</p>
+          <p style="font-size: 13px;">Each block loads 128 keys and 128 values. Computes local attention scores against the broadcasted Query.</p>
           <pre class="code"><span class="cm">// Block writes its partial summary to VRAM:</span>
 partial_m[block_idx] = local_m;
 partial_l[block_idx] = local_l;
 partial_O[block_idx * 64 + k] = local_O[k];</pre>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 8px;">
+            Now 2,048 blocks flood all 58 SMs (~35 blocks/SM), hiding global memory latency completely!
+          </p>
         </div>
 
         <div class="card" style="border-top: 3px solid var(--green);">
-          <span class="tag" style="color: var(--green);">Stage 2 · 32 Blocks</span>
-          <h3 style="margin-top: 8px;">Grid: (32 heads, 1 batch)</h3>
-          <p style="font-size: 13px;">One block per head reads the 64 partial results and merges them in shared memory using the Online Softmax formula.</p>
-          <pre class="code"><span class="cm">// 1. Find global max across the 64 chunks:</span>
+          <span class="tag" style="color: var(--green);">Stage 2 · 32 Blocks (Merge in Registers)</span>
+          <h3 style="margin-top: 8px;">Grid: (32 heads, 1 batch) · 64 Threads</h3>
+          <p style="font-size: 13px;">One block per head reads the 64 partial results and merges them directly in <strong>thread registers</strong>.</p>
+          <pre class="code"><span class="cm">// 1. Pass 1: Global max across 64 chunks (64 cycles)</span>
 float global_m = -1e20f;
 <span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i)
-    global_m = max(global_m, partial_m[i]);
+    <span class="kw">if</span> (partial_m[i] &gt; -1e19f) global_m = max(global_m, partial_m[i]);
 
-<span class="cm">// 2. Rescale all chunks to global_m and merge:</span>
+<span class="cm">// 2. Pass 2: Rescale and merge in thread registers</span>
+float global_l = 0.0f, global_O_k = 0.0f;
 <span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i) {
-    float exp_diff = expf(partial_m[i] - global_m);
-    global_l += partial_l[i] * exp_diff;
-    global_O[k] += partial_O[i*64 + k] * exp_diff;
+    <span class="kw">if</span> (partial_m[i] &gt; -1e19f) {
+        float exp_diff = expf(partial_m[i] - global_m);
+        global_l += partial_l[i] * exp_diff;
+        global_O_k += partial_O[i*64 + k] * exp_diff; <span class="cm">// Coalesced!</span>
+    }
 }
 <span class="cm">// 3. Final normalization:</span>
-O[k] = global_O[k] / global_l;</pre>
+O[k] = global_O_k / global_l;</pre>
         </div>
       </div>
 
       <div class="socratic-flow">
         <div class="turn">
           <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Stage 2 combines 64 partial outputs from Stage 1. How do you merge them without knowing the true global max upfront?</p>
+          <p>Stage 2 merges 64 partial outputs from Stage 1. Why scan <code>global_m</code> first instead of 1-pass streaming?</p>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>Scan the 64 scalar maximums first to find <code>global_m</code>. Then rescale all 64 partial sums and vectors by <code>exp(partial_m[i] - global_m)</code>, and divide by <code>global_l</code> at the end!</p>
+          <p>All 64 chunks are already in VRAM! Scanning 64 numbers takes just 64 cycles. It cuts expensive <code>expf()</code> calls by 50%, eliminates repeated accumulator rescaling, and runs entirely in fast registers with 100% coalesced memory reads!</p>
         </div>
       </div>
     </div>
