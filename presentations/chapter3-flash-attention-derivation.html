@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Deriving FlashAttention: A Socratic Journey</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Reveal.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/dracula.min.css" id="theme">
+    <!-- Highlight.js CSS for code formatting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/monokai.min.css">
+    
+    <style>
+        .reveal h1, .reveal h2, .reveal h3 { text-transform: none; font-weight: bold; color: #8be9fd; }
+        .reveal .math { color: #50fa7b; }
+        .reveal .highlight-red { color: #ff5555; font-weight: bold; }
+        .reveal .highlight-green { color: #50fa7b; font-weight: bold; }
+        .reveal p, .reveal li { font-size: 0.9em; line-height: 1.4; text-align: left; }
+        .reveal pre { font-size: 0.55em; box-shadow: 0 5px 15px rgba(0,0,0,0.5); border-radius: 8px; width: 100%; }
+        .container { display: flex; justify-content: space-between; }
+        .col { flex: 1; padding: 0 20px; }
+        .card { background: #282a36; border: 1px solid #44475a; border-radius: 8px; padding: 20px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- Slide 1: Title -->
+            <section>
+                <h1>Deriving Flash Attention</h1>
+                <h3>From First Principles to a 2.3x Speedup</h3>
+                <p>A step-by-step reconstruction of how we broke the $O(N^2)$ memory wall.</p>
+            </section>
+
+            <!-- Slide 2: The Core Problem -->
+            <section>
+                <h2>1. The $N^2$ Memory Wall</h2>
+                <div class="card">
+                    <p>In standard Attention, PyTorch computes: <br><span class="math">Scores = Q × K^T</span></p>
+                    <p>For an 8,192 token prompt and 32 heads, this creates an intermediate matrix that is <br><strong>1 × 32 × 8192 × 8192 × 4 bytes = 8.5 GB</strong>.</p>
+                </div>
+                <p>This happens <em>before</em> the Softmax is even applied. The GPU physically cannot hold this in SRAM, forcing massive, slow read/writes to global VRAM. Eventually, PyTorch simply crashes with an <strong>OOM Error</strong>.</p>
+            </section>
+
+            <!-- Slide 3: Online Softmax -->
+            <section>
+                <h2>2. The Mathematical Key: Online Softmax</h2>
+                <p>To fix this, we realized we must compute Softmax iteratively without seeing the whole array at once. But Softmax requires the maximum value (to avoid overflow) and the total sum of the denominator.</p>
+                <div class="card">
+                    <p><strong>The Derivation:</strong></p>
+                    <p>If we have an old max $m_{prev}$ and a new chunk max $m_{curr}$, the new global max is $m_{new} = max(m_{prev}, m_{curr})$.</p>
+                    <p>To keep the denominator correct without recalculating, we just scale the old denominator by the difference in maximums:</p>
+                    <p class="math">$l_{new} = l_{prev} \times e^{m_{prev} - m_{new}} + \sum e^{x_i - m_{new}}$</p>
+                </div>
+            </section>
+
+            <!-- Slide 4: Starting with Decode -->
+            <section>
+                <h2>3. First Attempt: The Decode Phase</h2>
+                <p>We started our CUDA journey with the Decode Phase, where $Q$ is just 1 token.</p>
+                <ul>
+                    <li>Memory is $O(N)$ here, not $O(N^2)$, making it easier to test our math.</li>
+                    <li>We used a <strong>Split-K</strong> approach: breaking the $K, V$ sequence into chunks.</li>
+                    <li>Each GPU block computed attention for one chunk of tokens independently, passing <code>partial_O</code>, <code>partial_m</code>, and <code>partial_l</code> to a Stage 2 kernel to combine.</li>
+                </ul>
+                <p class="highlight-red mt-4">But when we ran the profiler, it looked like we were SLOWER than PyTorch!</p>
+            </section>
+
+            <!-- Slide 5: The BFloat16 Cast Tax -->
+            <section>
+                <h2>4. The Invisible Bottleneck: The "Cast Tax"</h2>
+                <p>Our raw Split-K kernel was clocking <strong>0.108 ms</strong> compared to FlashDecode's <strong>0.211 ms</strong>.</p>
+                <p>Why did PyTorch report us taking 2.5 ms?</p>
+                <div class="card">
+                    <p><strong>The Culprit:</strong> The model weights were native <code>BFloat16</code>. Our C++ kernel required <code>Float32</code>. The Python command <code>tensor.to(torch.float32).contiguous()</code> took a massive <strong>2.17 ms</strong> to run, completely masking the kernel's 2x speedup under a layer of data-wrangling overhead!</p>
+                </div>
+            </section>
+
+            <!-- Slide 6: Moving to Prefill -->
+            <section>
+                <h2>5. Tackling the Beast: Prefill Phase</h2>
+                <p>With Decode conceptually verified, we tackled Prefill ($Q$ > 1 token). Here, we chunked $Q$ into blocks of 128 tokens, meaning one thread block processed 128 queries against the entire sequence.</p>
+                <pre><code class="cpp">// Collaborative loading into ultra-fast SRAM!
+__shared__ float smem_K[128][64];
+__shared__ float smem_V[128][64];
+
+for (int chunk = 0; chunk < num_chunks; chunk++) {
+    // 1. Load K block, compute dot products, update running max/sum
+    // 2. Load V block, multiply by probability, accumulate O
+}</code></pre>
+            </section>
+
+            <!-- Slide 7: Causal Masking Nuances -->
+            <section>
+                <h2>6. Causal Masking: A Subtlety</h2>
+                <p>We derived a critical insight about causal masking (where query $i$ cannot see key $j$ if $j > i$):</p>
+                <ul>
+                    <li>We don't need to put <code>if (col > row)</code> checks inside every loop!</li>
+                    <li>If the chunk of K is strictly <em>before</em> the chunk of Q ($j\_chunk < i\_chunk$), we skip the check entirely.</li>
+                    <li>If the chunk of K is strictly <em>after</em> the chunk of Q ($j\_chunk > i\_chunk$), we don't even load it!</li>
+                    <li><strong>We only do branch-heavy masking on the diagonal chunk ($i\_chunk == j\_chunk$).</strong></li>
+                </ul>
+            </section>
+
+            <!-- Slide 8: The Reality Check (Decode was 156ms!) -->
+            <section>
+                <h2>7. The Reality Check: Why was Decode slow?</h2>
+                <p>We ran our unified code on 8192 tokens. Prefill worked beautifully, but Decode clocked in at a miserable <strong>156 ms</strong> (vs PyTorch's 55 ms). What went wrong?</p>
+                <div class="container">
+                    <div class="col">
+                        <p class="highlight-red">1. Sequential Math Bug</p>
+                        <p>We put the 128 dot products inside an <code>if (threadIdx.x == 0)</code> block. One thread was doing 100% of the math sequentially while 127 threads sat perfectly idle!</p>
+                    </div>
+                    <div class="col">
+                        <p class="highlight-red">2. SRAM Bottleneck</p>
+                        <p>For Decode (1 Query), routing data through Shared Memory `smem_K` and `smem_V` was completely unnecessary overhead for the tiny math ratio.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 9: The Warp-Optimized Fix -->
+            <section>
+                <h2>8. The Warp-Optimized Fix</h2>
+                <p>We rewrote the hardware mapping to treat the GPU like a vector-machine:</p>
+                <ol>
+                    <li><strong>1 Thread = 1 Token</strong>. All 128 threads load $K$ for their specific token <em>directly from Global Memory into Registers</em>.</li>
+                    <li>They all compute the dot product with the broadcasted $Q$ simultaneously.</li>
+                    <li>We use a fast <strong>Tree Reduction</strong> in shared memory to find the block-wide maximum $m$ and sum $l$ in just $\log_2(128)$ steps.</li>
+                    <li>We load $V$ straight to registers, weight it, and use a perfectly coalesced shared-memory transpose to sum the outputs.</li>
+                </ol>
+            </section>
+
+            <!-- Slide 10: The Final Tally -->
+            <section>
+                <h2>9. The Final Benchmark</h2>
+                <p>We tested the finished kernels at <strong>8,192 Context Length</strong>:</p>
+                <div class="card">
+                    <h3 style="color: #ffb86c">Prefill Phase</h3>
+                    <p>PyTorch: <span class="highlight-red">CRASHED (OOM requesting 8.5 GB)</span></p>
+                    <p>Our Kernel: <span class="highlight-green">294.84 ms (0 GB extra memory)</span></p>
+                </div>
+                <div class="card">
+                    <h3 style="color: #bd93f9">Decode Phase</h3>
+                    <p>PyTorch cuBLAS: 37.14 ms</p>
+                    <p>Our Warp-Optimized Kernel: <span class="highlight-green">15.99 ms (2.32x Speedup!)</span></p>
+                </div>
+                <p style="margin-top:20px; font-style:italic;">By deriving the math ourselves, we eliminated the memory wall and doubled the execution speed of native hardware libraries.</p>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Reveal.js Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            slideNumber: 'c/t',
+            transition: 'slide',
+            plugins: [ RevealHighlight ]
+        });
+    </script>
+</body>
+</html>
