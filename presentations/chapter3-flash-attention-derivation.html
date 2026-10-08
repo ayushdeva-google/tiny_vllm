@@ -506,23 +506,30 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
           <span class="tag" style="color: var(--green);">Stage 2 · 32 Blocks</span>
           <h3 style="margin-top: 8px;">Grid: (32 heads, 1 batch)</h3>
           <p style="font-size: 13px;">One block per head reads the 64 partial results and merges them in shared memory using the Online Softmax formula.</p>
-          <pre class="code"><span class="cm">// Rescale and merge the 64 chunks:</span>
+          <pre class="code"><span class="cm">// 1. Find global max across the 64 chunks:</span>
+float global_m = -1e20f;
+<span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i)
+    global_m = max(global_m, partial_m[i]);
+
+<span class="cm">// 2. Rescale all chunks to global_m and merge:</span>
 <span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i) {
     float exp_diff = expf(partial_m[i] - global_m);
     global_l += partial_l[i] * exp_diff;
     global_O[k] += partial_O[i*64 + k] * exp_diff;
-}</pre>
+}
+<span class="cm">// 3. Final normalization:</span>
+O[k] = global_O[k] / global_l;</pre>
         </div>
       </div>
 
       <div class="socratic-flow">
         <div class="turn">
           <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Stage 2 combines 64 partial outputs. What formula does it use?</p>
+          <p>Stage 2 combines 64 partial outputs from Stage 1. How do you merge them without knowing the true global max upfront?</p>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>The parallel Online Softmax reduction! Each partial chunk is rescaled to the global head max and merged.</p>
+          <p>Scan the 64 scalar maximums first to find <code>global_m</code>. Then rescale all 64 partial sums and vectors by <code>exp(partial_m[i] - global_m)</code>, and divide by <code>global_l</code> at the end!</p>
         </div>
       </div>
     </div>
