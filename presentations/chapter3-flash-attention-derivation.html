@@ -185,8 +185,8 @@
     .stepper-btn:hover:not(:disabled) { background: var(--cyan); color: #081a24; }
     .stepper-btn:disabled { opacity: .35; cursor: default; }
     .stepper-display {
-      font-family: var(--mono); font-size: 12.5px; padding: 10px; background: var(--surface);
-      border-radius: 6px; border: 1px solid var(--line); min-height: 72px; line-height: 1.5;
+      font-family: var(--mono); font-size: 12.5px; padding: 12px 14px; background: var(--surface);
+      border-radius: 6px; border: 1px solid var(--line); min-height: 110px; line-height: 1.55;
     }
 
     @media (max-width: 768px) {
@@ -1059,8 +1059,12 @@ __syncthreads();
       text: "Local Max: m_2 = 5.0 (Larger than old max 3.0!)\nNew Global Max: m_new = max(3.0, 5.0) = 5.0\nCorrection Scale Factor: α = e^(3.0 - 5.0) = e^(-2) ≈ 0.1353"
     },
     {
-      title: "Step 3: Rescale Old State & Merge",
-      text: "Rescale Old Denominator: l_old_scaled = 1.135 * 0.1353 ≈ 0.1536\nChunk 2 Exponentials: [e^(5-5), e^(2-5)] = [1.0, e^(-3)] ≈ [1.0, 0.050]\nNew Denominator: l_new = 0.1536 + 1.050 = 1.2036\nRescaled Acc: O_new = (O_old * 0.1353) + (1.0*V_2 + 0.05*V_3)\n\nExact match with standard Softmax! Zero intermediate vectors stored."
+      title: "Step 3: Rescale Old State & Merge Chunks",
+      text: "Rescale Old Denominator: l_old_scaled = 1.135 * 0.1353 ≈ 0.1536\nChunk 2 Exponentials: [e^(5-5), e^(2-5)] = [1.0, e^(-3)] ≈ [1.0, 0.050]\nNew Denominator: l_new = 0.1536 + 1.050 = 1.2036\nRescaled Acc: O_new = (O_old * 0.1353) + (1.0*V_2 + 0.05*V_3)\n\nBoth chunks are now merged into running registers!"
+    },
+    {
+      title: "Step 4: Final Normalization (O = O_acc / l)",
+      text: "Final Division (executed once at the end of the sequence):\nO_final = O_new / l_new = O_new / 1.2036\n\nEffective Softmax Attention Probabilities:\nP = [0.0183/1.2036, 0.1353/1.2036, 1.0/1.2036, 0.0498/1.2036]\n  = [0.0152, 0.1124, 0.8308, 0.0414]  → Sum = 1.0000 (100%)\n\nFinal Output Vector:\nO = 0.0152*V_0 + 0.1124*V_1 + 0.8308*V_2 + 0.0414*V_3\n\nExact bit-for-bit equivalence with standard Softmax(Q K^T) V, without ever materializing the attention matrix in VRAM!"
     }
   ];
 
