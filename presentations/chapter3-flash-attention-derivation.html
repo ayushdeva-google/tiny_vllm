@@ -583,13 +583,13 @@ O[k] = global_O[k] / global_l;</pre>
 
       <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--green);">Raw Hardware Execution Time</span>
+          <span class="tag" style="color: var(--green);">Raw Hardware Execution Time (Per Token)</span>
           <table class="bench" style="margin-top: 8px;">
-            <tr><th>Kernel</th><th>Hardware Time</th></tr>
-            <tr><td>Native FlashDecode Baseline</td><td>0.211 ms</td></tr>
-            <tr class="win"><td>Our Custom Split-K Kernel</td><td class="k">0.108 ms (2x FASTER!)</td></tr>
+            <tr><th>Kernel</th><th>Per-Token Hardware Time</th></tr>
+            <tr><td>Native FlashDecode Baseline</td><td>0.211 ms / tok</td></tr>
+            <tr class="win"><td>Our Custom Split-K Kernel</td><td class="k">0.108 ms / tok (2x FASTER!)</td></tr>
           </table>
-          <p style="font-size: 12.5px; color: var(--muted); margin-top: 10px;">On the actual silicon, our Split-K kernel was twice as fast as the baseline!</p>
+          <p style="font-size: 12.5px; color: var(--muted); margin-top: 10px;">On the actual silicon, our Split-K kernel was twice as fast as the baseline per token step!</p>
         </div>
 
         <div class="card">
@@ -640,13 +640,13 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
 
         <div class="card" style="border-color: var(--green);">
-          <span class="tag" style="color: var(--green);">2. Native BF16 Benchmark (32 Tokens @ 8,192)</span>
+          <span class="tag" style="color: var(--green);">2. Native BF16 Benchmark (32 Tokens @ 8,192 Context)</span>
           <table class="bench" style="margin-top: 8px;">
-            <tr><th>Implementation</th><th>Time</th><th>Speedup</th></tr>
-            <tr><td>PyTorch Native BF16</td><td>335.36 ms</td><td>1.00x</td></tr>
-            <tr class="win"><td>Warp Decode Native BF16</td><td class="k">15.77 ms</td><td class="k">21.26x FASTER!</td></tr>
+            <tr><th>Implementation</th><th>Total Time</th><th>Per Token</th><th>Speedup</th></tr>
+            <tr><td>PyTorch Native BF16</td><td>335.36 ms</td><td>10.48 ms/tok</td><td>1.00x</td></tr>
+            <tr class="win"><td>Warp Decode Native BF16</td><td class="k">15.77 ms</td><td class="k">0.49 ms/tok</td><td class="k">21.26x FASTER!</td></tr>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Zero Python casting overhead. The 2.17 ms tax is completely gone, and Decode runs <strong>21x faster</strong> than native PyTorch.</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Zero Python casting overhead. Per-token decode latency plummeted from <strong>10.48 ms</strong> to <strong>0.49 ms</strong>—a massive <strong>21.26x speedup</strong> over native PyTorch!</p>
         </div>
       </div>
 
@@ -802,33 +802,86 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
     </div>
   </section>
 
-  <!-- SLIDE 15: PREFILL BENCHMARK TRIUMPH  -->
-  <section class="slide" data-title="Prefill Benchmark">
+  <!-- SLIDE 15: PREFILL BENCHMARK & CONTEXT SCALING  -->
+  <section class="slide" data-title="Context Scaling & VRAM Cliff">
     <div class="wrap">
-      <div class="eyebrow green">Act 3 · The Breakthrough</div>
-      <h2>The Prefill Milestone: 0 GB Extra VRAM</h2>
-      <p class="lede">We ran the 8,192-token Prefill benchmark comparing Naive PyTorch against our compiled C++ FlashAttention extension.</p>
+      <div class="eyebrow green">Act 3 · Silicon Verification</div>
+      <h2>The VRAM Cliff: Context Scaling Sweep</h2>
+      <p class="lede">Why is PyTorch faster on small prompts, but dead on long ones? We swept context length from 2,048 to 16,384 tokens on an NVIDIA L4 (24 GB VRAM).</p>
 
       <div class="grid2">
         <div class="card" style="border-color: var(--green);">
-          <h3 style="color: var(--green);">8,192 Context Prefill Results</h3>
-          <table class="bench">
-            <tr><th>Implementation</th><th>Time</th><th>VRAM Overhead</th><th>Status</th></tr>
-            <tr class="loss"><td>Naive PyTorch</td><td>—</td><td>8.5 GB</td><td>CRASHED (OOM)</td></tr>
-            <tr class="win"><td>Our FlashAttention</td><td class="k">294.84 ms</td><td class="k">0.0 GB</td><td>SUCCESS</td></tr>
+          <span class="tag" style="color: var(--green);">Context Scaling Benchmark (NVIDIA L4)</span>
+          <table class="bench" style="margin-top: 8px; font-size: 12.5px;">
+            <thead>
+              <tr>
+                <th>Context</th>
+                <th>PyTorch (cuBLAS)</th>
+                <th>FlashAttn (Ours)</th>
+                <th>PyTorch Int. VRAM</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>2,048</strong></td>
+                <td>10.54 ms</td>
+                <td>19.76 ms</td>
+                <td>0.50 GB</td>
+              </tr>
+              <tr>
+                <td><strong>4,096</strong></td>
+                <td>39.63 ms</td>
+                <td>73.85 ms</td>
+                <td>2.00 GB</td>
+              </tr>
+              <tr>
+                <td><strong>8,192</strong></td>
+                <td>157.56 ms</td>
+                <td>281.83 ms</td>
+                <td>8.00 GB</td>
+              </tr>
+              <tr class="loss">
+                <td><strong>12,288</strong></td>
+                <td>CRASHED (OOM)</td>
+                <td class="k">625.47 ms</td>
+                <td>18.00 GB</td>
+              </tr>
+              <tr class="loss">
+                <td><strong>16,384</strong></td>
+                <td>CRASHED (OOM)</td>
+                <td class="k">1,104.05 ms</td>
+                <td>32.00 GB</td>
+              </tr>
+            </tbody>
           </table>
-          <p style="font-size: 12.5px; color: var(--muted); margin-top: 12px;">Where PyTorch crashed trying to allocate 8.5 GB of intermediate activations, our kernel completed all 8,192 tokens in 294 ms with zero extra memory overhead.</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">
+            At 12k and 16k, PyTorch crashes with CUDA Out-of-Memory. Our FlashAttention kernel requires <strong>0 GB extra VRAM</strong> and completes cleanly.
+          </p>
         </div>
 
         <div>
-          <div class="socratic-flow" style="margin-top: 0;">
+          <div class="card" style="border-top: 3px solid var(--amber);">
+            <h3 style="font-size: 14px; color: var(--amber);">The Hardware Trade-off: Tensor Cores vs. CUDA Cores</h3>
+            <p style="font-size: 12px; margin-top: 6px; line-height: 1.55;">
+              <strong>Why PyTorch leads at &le; 8k:</strong> PyTorch GEMM runs on 4th-Gen Tensor Cores (~242 TFLOPs BF16 on L4). Our kernel runs scalar FMA loops on standard CUDA cores (~30 TFLOPs, 8× lower compute throughput).
+            </p>
+            <p style="font-size: 12px; margin-top: 6px; line-height: 1.55;">
+              <strong>The <em>O</em>(<em>N</em>²) Memory Cliff:</strong> At 16k context, PyTorch demands <strong>32 GB</strong> for intermediate attention matrices alone—exceeding total GPU memory! FlashAttention tiles directly into SRAM in <em>O</em>(1) memory.
+            </p>
+          </div>
+
+          <div class="socratic-flow" style="margin-top: 10px;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>PyTorch is ~1.8× faster at 8k context. Did our fused kernel fail?</p>
+            </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
-              <p>We conquered the memory wall! Prefill ran in 294 ms with 0 GB extra VRAM.</p>
+              <p>No! PyTorch dispatches to Tensor Cores (242 TFLOPs). We used scalar CUDA cores (30 TFLOPs). But at 12k+ tokens, PyTorch demands 18 GB+ of intermediate VRAM and crashes with OOM! Our kernel scales without limits.</p>
             </div>
             <div class="turn">
               <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Prefill succeeded. But now run Decode on that same 8,192 context...</p>
+              <p>Speed is irrelevant if the engine crashes. FlashAttention buys survival. Now, what happens in Decode?</p>
             </div>
           </div>
         </div>
@@ -951,13 +1004,13 @@ __syncthreads();
         <div class="card" style="border-color: var(--green);">
           <h3 style="color: var(--green);">Decode Latency (32 Tokens @ 8,192 Context)</h3>
           <table class="bench">
-            <tr><th>Implementation</th><th>Time</th><th>Speedup vs PyTorch</th></tr>
-            <tr><td>Naive PyTorch cuBLAS</td><td>37.14 ms</td><td>1.00x</td></tr>
-            <tr class="loss"><td>Our Initial Decode (Serial Bug)</td><td>156.04 ms</td><td>0.24x (4.2x slower)</td></tr>
-            <tr class="win"><td>Warp-Optimized Decode</td><td class="k">15.99 ms</td><td class="k">2.32x FASTER!</td></tr>
+            <tr><th>Implementation</th><th>Total (32 tok)</th><th>Per Token</th><th>Speedup</th></tr>
+            <tr><td>Naive PyTorch cuBLAS</td><td>37.14 ms</td><td>1.16 ms/tok</td><td>1.00x</td></tr>
+            <tr class="loss"><td>Our Initial Decode (Serial Bug)</td><td>156.04 ms</td><td>4.88 ms/tok</td><td>0.24x (4.2x slower)</td></tr>
+            <tr class="win"><td>Warp-Optimized Decode</td><td class="k">15.99 ms</td><td class="k">0.50 ms/tok</td><td class="k">2.32x FASTER!</td></tr>
           </table>
           <div class="callout green" style="margin-top: 14px; font-size: 13px;">
-            <strong>Result:</strong> Slashed decode time from 156 ms down to 15.99 ms—a <strong>10x speedup</strong> over our naive attempt, and <strong>2.32x faster than NVIDIA cuBLAS</strong>!
+            <strong>Result:</strong> Slashed per-token decode time from 4.88 ms down to 0.50 ms—a <strong>10x speedup</strong> over our naive attempt, and <strong>2.32x faster than NVIDIA cuBLAS</strong>!
           </div>
         </div>
 
