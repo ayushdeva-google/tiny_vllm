@@ -199,7 +199,7 @@
 <div id="deck">
   <div id="rail"><div class="fill"></div></div>
 
-  <!-- SLIDE 1: PROLOGUE -->
+  <!-- SLIDE 1: PROLOGUE  -->
   <section class="slide" data-title="Prologue">
     <div class="wrap">
       <div class="eyebrow violet">Silicon &amp; Socratic Derivation</div>
@@ -229,7 +229,67 @@
     </div>
   </section>
 
-  <!-- SLIDE 2: THE CATASTROPHE -->
+  <!-- SLIDE 2: ANATOMY OF ATTENTION (ONE HEAD, ROW BY ROW)  -->
+  <section class="slide" data-title="Anatomy of Attention">
+    <div class="wrap">
+      <div class="eyebrow cyan">Act 1 · Mathematical Anatomy</div>
+      <h2>A Simpler Problem: One Head, Row by Row</h2>
+      <p class="lede">Before wrestling with GPU silicon, let's deconstruct the formula: <strong>Softmax(Q Kᵀ) · V</strong>. Attention operates across multiple heads, but heads are completely independent. Let's isolate a single head first.</p>
+
+      <div class="grid3" style="margin-top: 14px;">
+        <div class="card" style="border-top: 3px solid var(--cyan);">
+          <span class="tag" style="color: var(--cyan);">1. Inputs &amp; Dimensions</span>
+          <p style="font-size: 13px; margin-top: 6px;">For 1 head with prompt length <span class="mono k-c">N = 8,192</span> and head dimension <span class="mono k-c">d = 64</span>:</p>
+          <div class="callout cyan" style="font-family: var(--mono); font-size: 11.5px; margin: 8px 0; line-height: 1.5;">
+            Q : [N × d] = [8192 × 64]<br>
+            K : [N × d] = [8192 × 64]<br>
+            V : [N × d] = [8192 × 64]
+          </div>
+          <p style="font-size: 12px; color: var(--muted); margin: 0;">LLaMA has 32 query heads, but they share zero data. Solve 1 head, and you've solved all 32.</p>
+        </div>
+
+        <div class="card" style="border-top: 3px solid var(--amber);">
+          <span class="tag" style="color: var(--amber);">2. Q Kᵀ produces [N × N]</span>
+          <p style="font-size: 13px; margin-top: 6px;">Multiplying <span class="mono">[N × d] × [d × N]</span> yields an <span class="mono k-a">[8192 × 8192]</span> matrix.</p>
+          <div class="callout amber" style="font-family: var(--mono); font-size: 11.5px; margin: 8px 0; line-height: 1.5;">
+            Row i = Query token &lt;i&gt; querying all keys &lt;j&gt;<br>
+            Score(i, j) = (Q<sub>i</sub> · K<sub>j</sub>ᵀ) / √d (scalar)<br>
+            Row S<sub>i</sub> : [1 × N] = [1 × 8192]
+          </div>
+          <p style="font-size: 12px; color: var(--muted); margin: 0;">Each entry is a scalar denoting how strongly query &lt;i&gt; attends to preceding key &lt;j&gt;.</p>
+        </div>
+
+        <div class="card" style="border-top: 3px solid var(--green);">
+          <span class="tag" style="color: var(--green);">3. Row Softmax &amp; V Blending</span>
+          <p style="font-size: 13px; margin-top: 6px;">Softmax is taken <strong>row by row</strong>. Row <span class="mono">S<sub>i</sub></span> becomes probabilities <span class="mono k">P<sub>i</sub></span>.</p>
+          <div class="callout green" style="font-family: var(--mono); font-size: 11.5px; margin: 8px 0; line-height: 1.5;">
+            P<sub>i</sub> = Softmax(S<sub>i</sub>) : [1 × N] row vector<br>
+            O<sub>i</sub> = P<sub>i</sub> · V : [1 × N] × [N × d]<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;= [1 × d] = [1 × 64] output vector
+          </div>
+          <p style="font-size: 12px; color: var(--muted); margin: 0;">Softmax is a 1D row; V is a 2D matrix. We add the value vectors of keys in exact softmax proportion!</p>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top: 14px;">
+        <div class="dialogue teacher">
+          <div class="avatar t">Dr. Chen</div>
+          <div class="speech">
+            <p>"Look at the mechanics: output row <em>O<sub>i</sub></em> only depends on query row <em>i</em> and the key/value matrices. Token <em>i</em> never needs to see token <em>i+1</em>'s attention scores! So where does the memory explosion come from?"</p>
+          </div>
+        </div>
+
+        <div class="dialogue student">
+          <div class="avatar s">Alex</div>
+          <div class="speech">
+            <p>"Because when we scale this from 1 head to 32 heads, PyTorch doesn't compute row by row. It computes and materializes all 8,192 rows for all 32 heads in global memory simultaneously! Let's see the math of the crash."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 3: THE CATASTROPHE  -->
   <section class="slide" data-title="The Memory Wall">
     <div class="wrap">
       <div class="eyebrow red">Act 1 · The Crime Scene</div>
@@ -276,7 +336,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 3: DECONSTRUCTING SOFTMAX -->
+  <!-- SLIDE 4: DECONSTRUCTING SOFTMAX  -->
   <section class="slide" data-title="Deconstructing Softmax">
     <div class="wrap">
       <div class="eyebrow amber">Act 1 · Mathematical First Principles</div>
@@ -317,7 +377,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 4: ONLINE SOFTMAX DERIVATION -->
+  <!-- SLIDE 5: ONLINE SOFTMAX DERIVATION  -->
   <section class="slide" data-title="Online Softmax">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · The Mathematical Key</div>
@@ -360,7 +420,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 5: INTERACTIVE ONLINE SOFTMAX WIDGET -->
+  <!-- SLIDE 6: INTERACTIVE ONLINE SOFTMAX WIDGET  -->
   <section class="slide" data-title="Online Softmax Lab">
     <div class="wrap">
       <div class="eyebrow green">Act 1 · Interactive Verification</div>
@@ -391,7 +451,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 6: FIRST TEST: DECODE PHASE -->
+  <!-- SLIDE 7: FIRST TEST: DECODE PHASE  -->
   <section class="slide" data-title="Decode Phase Plan">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
@@ -434,7 +494,7 @@
     </div>
   </section>
 
-  <!-- SLIDE 7: SPLIT-K ARCHITECTURE -->
+  <!-- SLIDE 8: SPLIT-K ARCHITECTURE  -->
   <section class="slide" data-title="Split-K Architecture">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
@@ -474,7 +534,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 8: THE MISSING SPEEDUP BUG -->
+  <!-- SLIDE 9: THE MISSING SPEEDUP BUG  -->
   <section class="slide" data-title="The Mystery Bug">
     <div class="wrap">
       <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
@@ -517,7 +577,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 9: THE BFLOAT16 CAST TAX -->
+  <!-- SLIDE 10: THE BFLOAT16 CAST TAX  -->
   <section class="slide" data-title="The Cast Tax">
     <div class="wrap">
       <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
@@ -554,7 +614,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 10: PREFILL DERIVATION -->
+  <!-- SLIDE 11: PREFILL DERIVATION  -->
   <section class="slide" data-title="Tiling Prefill">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Full FlashAttention</div>
@@ -605,7 +665,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 11: THE 48KB SRAM TRAP -->
+  <!-- SLIDE 12: THE 48KB SRAM TRAP  -->
   <section class="slide" data-title="The 48KB SRAM Trap">
     <div class="wrap">
       <div class="eyebrow red">Act 3 · Hardware Constraints</div>
@@ -645,7 +705,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 12: CAUSAL MASKING NUANCE -->
+  <!-- SLIDE 13: CAUSAL MASKING NUANCE  -->
   <section class="slide" data-title="Causal Masking Nuance">
     <div class="wrap">
       <div class="eyebrow amber">Act 3 · Warp Divergence Optimization</div>
@@ -683,7 +743,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 13: PREFILL BENCHMARK TRIUMPH -->
+  <!-- SLIDE 14: PREFILL BENCHMARK TRIUMPH  -->
   <section class="slide" data-title="Prefill Benchmark">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Breakthrough</div>
@@ -719,7 +779,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 14: THE 156MS DECODE DISASTER -->
+  <!-- SLIDE 15: THE 156MS DECODE DISASTER  -->
   <section class="slide" data-title="Decode Disaster">
     <div class="wrap">
       <div class="eyebrow red">Act 4 · The Reality Check</div>
@@ -762,7 +822,7 @@ partial_O[block_idx * 64 + k] = local_O[k];</pre>
     </div>
   </section>
 
-  <!-- SLIDE 15: FORENSIC CODE REVIEW -->
+  <!-- SLIDE 16: FORENSIC CODE REVIEW  -->
   <section class="slide" data-title="Forensic Code Review">
     <div class="wrap">
       <div class="eyebrow red">Act 4 · Post-Mortem Analysis</div>
@@ -799,7 +859,7 @@ __shared__ float smem[128][64];
     </div>
   </section>
 
-  <!-- SLIDE 16: THE HARDWARE FIX: WARP DECODE -->
+  <!-- SLIDE 17: THE HARDWARE FIX: WARP DECODE  -->
   <section class="slide" data-title="Warp Decode Architecture">
     <div class="wrap">
       <div class="eyebrow green">Act 5 · The Redemption</div>
@@ -837,7 +897,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 17: FINAL BENCHMARK RESULTS -->
+  <!-- SLIDE 18: FINAL BENCHMARK RESULTS  -->
   <section class="slide" data-title="The Final Benchmark">
     <div class="wrap">
       <div class="eyebrow green">Act 5 · Silicon Verification</div>
@@ -877,7 +937,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 18: COMPUTE VS MEMORY BOUND -->
+  <!-- SLIDE 19: COMPUTE VS MEMORY BOUND  -->
   <section class="slide" data-title="Architectural Synthesis">
     <div class="wrap">
       <div class="eyebrow violet">Act 6 · The Fundamental Theory</div>
@@ -914,7 +974,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 19: THE FULL STACK -->
+  <!-- SLIDE 20: THE FULL STACK  -->
   <section class="slide" data-title="The Full LLM Stack">
     <div class="wrap">
       <div class="eyebrow cyan">Act 6 · Putting It All Together</div>
@@ -948,7 +1008,7 @@ __syncthreads();
     </div>
   </section>
 
-  <!-- SLIDE 20: EPILOGUE & TAKEAWAYS -->
+  <!-- SLIDE 21: EPILOGUE & TAKEAWAYS  -->
   <section class="slide" data-title="Epilogue">
     <div class="wrap">
       <div class="eyebrow green">Epilogue · Engineering Rules</div>
