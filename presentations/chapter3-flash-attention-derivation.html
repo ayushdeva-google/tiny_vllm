@@ -439,18 +439,18 @@
     </div>
   </section>
 
-  <!-- SLIDE 7: FIRST TEST: DECODE PHASE WITHOUT SPLIT-K  -->
-  <section class="slide" data-title="Naive Decode Trap">
+  <!-- SLIDE 7: FIRST TEST: DECODE PHASE  -->
+  <section class="slide" data-title="The Decode Surprise">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
-      <h2>First Target: Naive Decode &amp; The SM Starvation Trap</h2>
+      <h2>First Target: The Decode Phase</h2>
       <p class="lede">Rather than jumping straight to the complex <em>N</em> × <em>N</em> prefill matrix, Alex implements Online Softmax on token generation (Decode), where <em>Q</em> is just 1 token. But the initial benchmark is alarming.</p>
 
       <div class="grid2">
         <div>
           <div class="card" style="border-color: var(--red);">
-            <h3 style="color: var(--red);">The 1-Block-per-Head Baseline</h3>
-            <p style="font-size: 13px;">Alex maps 1 thread block to each attention head: <span class="mono">Grid: (32 heads, 1 batch)</span>. Each block loops through all 8,192 keys sequentially using Online Softmax.</p>
+            <h3 style="color: var(--red);">The Initial Benchmark</h3>
+            <p style="font-size: 13px;">Alex maps 1 thread block to each attention head: <span class="mono">Grid: (32 heads, 1 batch)</span>. Each block streams through all 8,192 keys using the newly derived Online Softmax formula.</p>
 
             <table class="bench" style="margin-top: 10px;">
               <thead>
@@ -467,7 +467,7 @@
                   <td>Baseline (1.00x)</td>
                 </tr>
                 <tr class="loss">
-                  <td>Naive Decode (No Split-K)</td>
+                  <td>Our CUDA Implementation</td>
                   <td>0.212 ms</td>
                   <td>2.55x SLOWER!</td>
                 </tr>
@@ -475,7 +475,7 @@
             </table>
 
             <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
-              <strong>The Hardware Trap: Wave Starvation</strong><br>
+              <strong>The Hardware Trap: SM Starvation</strong><br>
               An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) completely dark and idle</strong>! The active blocks must grind through 8,192 tokens sequentially.
             </div>
           </div>
@@ -485,19 +485,19 @@
           <div class="socratic-flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>Your naive custom decode kernel is 2.5x slower than PyTorch cuBLAS. Why is the silicon underperforming?</p>
+              <p>We fused the operations and implemented Online Softmax. Why is our custom kernel 2.5x slower than PyTorch cuBLAS?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
-              <p>Wave starvation! Batch=1 with 32 heads launches only 32 thread blocks. Our GPU has 58 SMs, so 26 SMs sit completely idle while the active ones grind through 8,192 tokens sequentially in a single loop.</p>
+              <p>SM starvation! Batch=1 with 32 heads launches only 32 thread blocks. Our L4 GPU has 58 SMs—26 SMs (45% of the chip!) sit completely idle while the active blocks grind through 8,192 tokens sequentially.</p>
             </div>
             <div class="turn">
               <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>If <em>Q</em> has only 1 token, where can you find more parallel work to saturate all 58 SMs?</p>
+              <p>If <em>Q</em> has only 1 token, where can we find more parallel work to saturate all 58 SMs?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
-              <p>Along the sequence (<em>K</em>) dimension! Partition the 8,192 keys into chunks of 128 and parallelize <em>K</em> across the GPU: Split-K decoding!</p>
+              <p>Along the sequence (<em>K</em>) dimension! Instead of 1 block doing all 8,192 keys, partition the keys into chunks of 128 and parallelize across the GPU: Split-K!</p>
             </div>
           </div>
         </div>
