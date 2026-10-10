@@ -456,27 +456,27 @@
               <thead>
                 <tr>
                   <th>Implementation</th>
-                  <th>Kernel Latency</th>
+                  <th>Per-Token Latency</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 <tr class="win">
-                  <td>PyTorch Native cuBLAS</td>
-                  <td>0.083 ms</td>
+                  <td>PyTorch Native (BF16 Baseline)</td>
+                  <td>0.57 ms</td>
                   <td>Baseline (1.00x)</td>
                 </tr>
                 <tr class="loss">
                   <td>Our CUDA Implementation</td>
-                  <td>0.212 ms</td>
-                  <td>2.55x SLOWER!</td>
+                  <td>0.72 ms</td>
+                  <td>1.27x SLOWER!</td>
                 </tr>
               </tbody>
             </table>
 
             <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
               <strong>The Hardware Trap: SM Starvation</strong><br>
-              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) completely dark and idle</strong>! The active blocks must grind through 8,192 tokens sequentially.
+              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) completely dark and idle</strong>! The active blocks must grind through 8,192 tokens sequentially (43.73 ms vs 31.16 ms over 32 tokens).
             </div>
           </div>
         </div>
@@ -485,7 +485,7 @@
           <div class="socratic-flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>We fused the operations and implemented Online Softmax. Why is our custom kernel 2.5x slower than PyTorch cuBLAS?</p>
+              <p>We fused the operations and implemented Online Softmax. Why is our custom kernel 1.27x slower than PyTorch Native?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
@@ -505,171 +505,147 @@
     </div>
   </section>
 
-  <!-- SLIDE 8: THE FIRST SPLIT-K ATTEMPT & THE SERIAL BUG  -->
-  <section class="slide" data-title="Split-K &amp; The Serial Bug">
+  <!-- SLIDE 8: SPLIT-K ARCHITECTURE  -->
+  <section class="slide" data-title="Split-K Architecture">
     <div class="wrap">
-      <div class="eyebrow red">Act 2 · The First Split-K Attempt</div>
-      <h2>The 156 ms Reality Check: The Serial Bug</h2>
-      <p class="lede">To saturate all 58 SMs, Alex splits the sequence into 64 chunks of 128 keys (2,048 blocks). But the first benchmark is a disaster: 3x slower than PyTorch!</p>
+      <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
+      <h2>The Solution: Split-K Decode Architecture</h2>
+      <p class="lede">To saturate all 58 SMs, Alex splits the sequence into 64 chunks of 128 keys. Stage 1 distributes 2,048 blocks across the entire GPU; Stage 2 merges them in thread registers.</p>
 
       <div class="grid2">
-        <div>
-          <div class="card" style="border-color: var(--red);">
-            <h3 style="color: var(--red);">32-Token Decode Benchmark</h3>
-            <table class="bench">
-              <thead>
-                <tr><th>Implementation</th><th>Total Time</th><th>Per Token</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                <tr class="win"><td>PyTorch cuBLAS</td><td>55.48 ms</td><td>1.73 ms/tok</td><td>Baseline</td></tr>
-                <tr class="loss"><td>Our Initial Split-K</td><td>156.04 ms</td><td>4.88 ms/tok</td><td>3x SLOWER!</td></tr>
-              </tbody>
-            </table>
-            <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">
-              Launching 2,048 blocks fixed SM starvation, but decode latency skyrocketed to 156 ms. Why?
-            </p>
-          </div>
+        <div class="card" style="border-top: 3px solid var(--cyan);">
+          <span class="tag" style="color: var(--cyan);">Stage 1 · 2,048 Blocks (Saturate All SMs)</span>
+          <h3 style="margin-top: 8px;">Grid: (64 chunks, 32 heads, 1 batch)</h3>
+          <p style="font-size: 13px;">Each block loads 128 keys and 128 values. Computes local attention scores against the broadcasted Query.</p>
+          <pre class="code"><span class="cm">// Block writes its partial summary to VRAM:</span>
+partial_m[block_idx] = local_m;
+partial_l[block_idx] = local_l;
+partial_O[block_idx * 64 + k] = local_O[k];</pre>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 8px;">
+            Now 2,048 blocks flood all 58 SMs (~35 blocks/SM), hiding global memory latency completely!
+          </p>
         </div>
 
-        <div>
-          <pre class="code"><span class="cm">// The fatal flaw inside splitk_stage1:</span>
-__shared__ float smem[128][64];
+        <div class="card" style="border-top: 3px solid var(--green);">
+          <span class="tag" style="color: var(--green);">Stage 2 · 32 Blocks (Merge in Registers)</span>
+          <h3 style="margin-top: 8px;">Grid: (32 heads, 1 batch) · 64 Threads</h3>
+          <p style="font-size: 13px;">One block per head reads the 64 partial results and merges them directly in <strong>thread registers</strong>.</p>
+          <pre class="code"><span class="cm">// 1. Pass 1: Global max across 64 chunks (64 cycles)</span>
+float global_m = -1e20f;
+<span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i)
+    <span class="kw">if</span> (partial_m[i] &gt; -1e19f) global_m = max(global_m, partial_m[i]);
 
-<span class="err">if (tx == 0) {  // &lt;-- FATAL DESIGN BUG!</span>
-<span class="err">    for (int c = 0; c &lt; 128; ++c) {</span>
-<span class="err">        float dot = 0.0f;</span>
-<span class="err">        for (int k = 0; k &lt; d; ++k)</span>
-<span class="err">            dot += q_reg[k] * smem[c][k];</span>
-<span class="err">        scores[c] = dot * scale;</span>
-<span class="err">    }</span>
-<span class="err">}</span></pre>
+<span class="cm">// 2. Pass 2: Rescale and merge in thread registers</span>
+float global_l = 0.0f, global_O_k = 0.0f;
+<span class="kw">for</span> (int i = 0; i &lt; num_chunks; ++i) {
+    <span class="kw">if</span> (partial_m[i] &gt; -1e19f) {
+        float exp_diff = expf(partial_m[i] - global_m);
+        global_l += partial_l[i] * exp_diff;
+        global_O_k += partial_O[i*64 + k] * exp_diff; <span class="cm">// Coalesced!</span>
+    }
+}
+<span class="cm">// 3. Final normalization:</span>
+O[k] = global_O_k / global_l;</pre>
         </div>
       </div>
 
       <div class="socratic-flow">
         <div class="turn">
           <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Your Split-K kernel is 3x slower than PyTorch cuBLAS. Look at line 4 of your kernel. What are threads 1..127 doing?</p>
+          <p>Stage 2 merges 64 partial outputs from Stage 1. Why scan <code>global_m</code> first instead of 1-pass streaming?</p>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>They're sitting idle! <code>if (tx == 0)</code> forced Thread 0 to run all 128 dot products sequentially. It was a sequential CPU loop running on a GPU! And staging keys in shared memory is wasteful because for 1 query, keys are read once and never reused.</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>How do you restructure the kernel to treat the GPU as a true parallel vector machine?</p>
+          <p>All 64 chunks are already in VRAM! Scanning 64 numbers takes just 64 cycles. It cuts expensive <code>expf()</code> calls by 50%, eliminates repeated accumulator rescaling, and runs entirely in fast registers with 100% coalesced memory reads!</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 9: WARP DECODE REDEMPTION  -->
-  <section class="slide" data-title="Warp-Optimized Decode">
-    <div class="wrap">
-      <div class="eyebrow green">Act 2 · Vector Parallelism</div>
-      <h2>Redemption: Warp-Optimized Decode</h2>
-      <p class="lede">Alex completely redesigns the Decode kernel: 1 thread = 1 token, streaming keys directly into registers, with parallel tree reduction.</p>
-
-      <div class="grid2">
-        <div class="card">
-          <span class="tag" style="color: var(--green);">The 4 Architectural Pillars</span>
-          <ul class="clean" style="margin-top: 10px; font-size: 13px;">
-            <li><strong>1 Thread = 1 Token:</strong> All 128 threads compute simultaneously. Thread <em>tx</em> processes key <em>tx</em>.</li>
-            <li><strong>Bypass Shared Memory:</strong> Load keys directly from Global Memory into registers. Zero staging in SRAM!</li>
-            <li><strong>Parallel Tree Reduction:</strong> Reduce max and sum across warps in shared memory in log₂(128) = 7 steps.</li>
-            <li><strong>Stage 2 Merge in Registers:</strong> 32 blocks read partial outputs and merge in registers using 2-pass Online Softmax.</li>
-          </ul>
-        </div>
-
-        <div class="card" style="border-color: var(--green);">
-          <h3 style="color: var(--green);">Decode Latency (32 Tokens @ 8,192 Context)</h3>
-          <table class="bench">
-            <thead>
-              <tr><th>Implementation</th><th>Total (32 tok)</th><th>Per Token</th><th>Speedup</th></tr>
-            </thead>
-            <tbody>
-              <tr class="loss"><td>Our Initial Split-K (Serial Bug)</td><td>156.04 ms</td><td>4.88 ms/tok</td><td>0.24x (4.2x slower)</td></tr>
-              <tr><td>Naive PyTorch cuBLAS</td><td>37.14 ms</td><td>1.16 ms/tok</td><td>1.00x</td></tr>
-              <tr class="win"><td>Warp-Optimized Decode</td><td class="k">15.99 ms</td><td class="k">0.50 ms/tok</td><td class="k">2.32x FASTER!</td></tr>
-            </tbody>
-          </table>
-          <div class="callout green" style="margin-top: 12px; font-size: 12.5px;">
-            <strong>Result:</strong> Slashed per-token decode time from 4.88 ms down to 0.50 ms—a <strong>10x speedup</strong> over our naive attempt, and <strong>2.32x faster than NVIDIA cuBLAS</strong>!
-          </div>
-        </div>
-      </div>
-
-      <div class="socratic-flow">
-        <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Why did bypassing shared memory and streaming directly to registers beat cuBLAS by 2.32x?</p>
-        </div>
-        <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>In Decode, arithmetic intensity is ~1 FLOP/byte. Staging keys in SRAM just adds memory copy latency. Streaming directly to registers and reducing in 7 steps maximizes memory bandwidth!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Now plug this fast kernel into our full PyTorch inference loop...</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SLIDE 10: THE MISSING SPEEDUP BUG & CAST TAX  -->
+  <!-- SLIDE 9: THE MISSING SPEEDUP BUG  -->
   <section class="slide" data-title="The Mystery Bug">
     <div class="wrap">
       <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
       <h2>The Mystery of the 'Missing Speedup'</h2>
-      <p class="lede">Alex plugged the fast Warp Decode kernel into the full PyTorch inference engine. The result was demoralizing.</p>
+      <p class="lede">Alex launched 2,048 thread blocks to saturate all 58 SMs. But profiling Split-K Decode end-to-end vs Native PyTorch revealed a demoralizing result.</p>
 
       <div class="grid2">
-        <div class="card" style="border-color: var(--red);">
-          <h3 style="color: var(--red);">PyTorch End-to-End Profile</h3>
-          <table class="bench">
-            <thead>
-              <tr><th>Implementation</th><th>Reported Time</th></tr>
-            </thead>
-            <tbody>
-              <tr class="win"><td>PyTorch Native</td><td>0.52 ms</td></tr>
-              <tr class="loss"><td>Our Custom Split-K</td><td>2.48 ms (4.7x SLOWER!)</td></tr>
-            </tbody>
-          </table>
-          <div class="callout red" style="margin: 10px 0 0; font-family: var(--mono); font-size: 12px;">
-            k = k_cache.to(torch.float32).contiguous()<br>
-            Time taken: 2.17 ms!
+        <div>
+          <div class="card" style="border-color: var(--red);">
+            <h3 style="color: var(--red);">End-to-End Profile (32 Tokens @ 8,192 Context)</h3>
+            <table class="bench">
+              <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Status</th></tr>
+              <tr class="win"><td>PyTorch Native (BF16 Baseline)</td><td>0.57 ms</td><td>31.16 ms</td><td>1.00x (Baseline)</td></tr>
+              <tr class="loss"><td>Our Initial Split-K (End-to-End)</td><td>5.01 ms</td><td>164.10 ms</td><td>5.27x SLOWER!</td></tr>
+            </table>
+            <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
+              <strong>The Anomaly:</strong> Instead of gaining 2x to 4x speedup by saturating all 58 SMs, end-to-end execution in PyTorch became <strong>5.27x slower</strong>!
+            </div>
           </div>
         </div>
 
+        <div>
+          <div class="socratic-flow" style="margin-top: 0;">
+            <div class="turn">
+              <span class="badge probe">Dr. Chen (Probe)</span>
+              <p>We flooded all 58 SMs with 2,048 blocks. Why is end-to-end decode over 5x slower than PyTorch?</p>
+            </div>
+            <div class="turn">
+              <span class="badge solve">Alex (Solution)</span>
+              <p>Never trust framework-level timestamps blindly. I wrote an isolated benchmark (`unified_decode_benchmark.py`) with native CUDA events to profile the bare hardware execution vs framework overhead.</p>
+            </div>
+            <div class="turn">
+              <span class="badge nudge">Dr. Chen (Nudge)</span>
+              <p>Let's inspect what the profiler uncovered.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 10: THE BFLOAT16 CAST TAX  -->
+  <section class="slide" data-title="The Cast Tax">
+    <div class="wrap">
+      <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
+      <h2>Unmasking the 'BFloat16 Cast Tax' &amp; Thread Stall</h2>
+      <p class="lede">The profiler revealed two distinct culprits: a hidden PyTorch memory copy and an idling thread block inside the kernel.</p>
+
+      <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--green);">Raw Hardware Execution Time (Per Token)</span>
-          <table class="bench" style="margin-top: 8px;">
-            <thead>
-              <tr><th>Kernel</th><th>Per-Token Hardware Time</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Native FlashDecode Baseline</td><td>0.211 ms / tok</td></tr>
-              <tr class="win"><td>Our Custom Split-K Kernel</td><td class="k">0.108 ms / tok (2x FASTER!)</td></tr>
-            </tbody>
-          </table>
-          <p style="font-size: 12.5px; color: var(--muted); margin-top: 10px;">
-            On the actual silicon, our Split-K kernel was twice as fast (0.108 ms)! The 2.48 ms delay was entirely Python memory allocation and type conversion.
-          </p>
+          <span class="tag" style="color: var(--red);">Culprit 1 · The Hidden Python Bottleneck</span>
+          <div class="callout red" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
+            k = k_cache.to(torch.float32).contiguous()<br>
+            v = v_cache.to(torch.float32).contiguous()<br>
+            Tax: ~1.68 ms across 16 layers per step!
+          </div>
+          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B weights are natively <code>BFloat16</code>. Our C++ kernel took <code>float32</code>. In the inference loop, PyTorch was allocating and casting 64MB of tensors on every single token step!</p>
+        </div>
+
+        <div class="card">
+          <span class="tag" style="color: var(--amber);">Culprit 2 · The Thread-0 Serial Bottleneck</span>
+          <div class="callout amber" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
+            // Stage 1 flaw inside block:<br>
+            if (tx == 0) { // Thread 0 does all 128 keys!<br>
+            &nbsp;&nbsp;for (int c = 0; c &lt; 128; ++c) dot += q[k]*smem[c][k];<br>
+            } // 127 threads sat completely idle!
+          </div>
+          <p style="font-size: 12.5px; color: var(--muted);">While 128 threads were spawned per block, thread 0 did all the math sequentially. Replacing this with parallel <strong>warp reductions</strong> dropped kernel time to <strong>0.43 ms</strong>!</p>
         </div>
       </div>
 
       <div class="socratic-flow">
         <div class="turn">
           <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>The bare silicon kernel runs in 0.108 ms, but PyTorch reports 2.48 ms. Where was the time lost?</p>
+          <p>So the 5.01 ms delay came from two compounding mistakes: serial thread work and framework casting?</p>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>The Python cast tax! LLaMA weights are natively BFloat16; our C++ kernel took Float32. PyTorch was allocating and casting 64 MB of tensors on every single token step! The kernel was flying; Python was choking.</p>
+          <p>Exactly. Thread 0 was computing dot products alone in Stage 1, while Python was re-allocating 64 MB of tensors on every token step! Once we parallelize reductions across warps and eliminate the cast, speedup is unlocked.</p>
         </div>
         <div class="turn">
           <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>How do we kill the tax altogether?</p>
+          <p>Now let's eliminate the Python cast completely with native <code>__nv_bfloat16</code>.</p>
         </div>
       </div>
     </div>
@@ -696,13 +672,16 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
 
         <div class="card" style="border-color: var(--green);">
-          <span class="tag" style="color: var(--green);">2. Native BF16 Benchmark (32 Tokens @ 8,192 Context)</span>
+          <span class="tag" style="color: var(--green);">2. Unified Decode Progression (NVIDIA L4 · N = 8,192)</span>
           <table class="bench" style="margin-top: 8px;">
-            <tr><th>Implementation</th><th>Total Time</th><th>Per Token</th><th>Speedup</th></tr>
-            <tr><td>PyTorch Native BF16</td><td>335.36 ms</td><td>10.48 ms/tok</td><td>1.00x</td></tr>
-            <tr class="win"><td>Warp Decode Native BF16</td><td class="k">15.77 ms</td><td class="k">0.49 ms/tok</td><td class="k">21.26x FASTER!</td></tr>
+            <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Speedup</th></tr>
+            <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.57 ms</td><td>31.16 ms</td><td>1.00x</td></tr>
+            <tr class="loss"><td>1. Naive CUDA (No Split-K)</td><td>0.72 ms</td><td>43.73 ms</td><td>0.71x (1.40x slower)</td></tr>
+            <tr class="loss"><td>2. Initial Split-K (with Cast Tax)</td><td>5.01 ms</td><td>164.10 ms</td><td>0.19x (5.27x slower)</td></tr>
+            <tr><td>3. Warp Split-K (FP32 Registers)</td><td>0.43 ms</td><td>14.20 ms</td><td>2.19x</td></tr>
+            <tr class="win"><td>4. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">14.20 ms</td><td class="k">2.19x FASTER!</td></tr>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Zero Python casting overhead. Per-token decode latency plummeted from <strong>10.48 ms</strong> to <strong>0.49 ms</strong>—a massive <strong>21.26x speedup</strong> over native PyTorch!</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Zero Python casting overhead, zero tensor copies. Total 32-token generation dropped from <strong>164.10 ms</strong> to <strong>14.20 ms</strong>—a <strong>2.19x speedup</strong> over native PyTorch!</p>
         </div>
       </div>
 
@@ -937,7 +916,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
             </div>
             <div class="turn">
               <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>We have conquered both phases: Prefill runs in <em>O</em>(1) memory, and Decode runs in 0.49 ms/token. Let's synthesize the fundamental architectural lessons.</p>
+              <p>Speed is irrelevant if the engine crashes. FlashAttention buys survival on long prompts. Now, let's synthesize the complete picture: why does LLM inference require two fundamentally different kernels?</p>
             </div>
           </div>
         </div>
@@ -1003,7 +982,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         <div class="card">
           <span class="tag">Chapter 3 · Decode</span>
           <h3>Warp Flash Decode</h3>
-          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction. 21.26x faster than native PyTorch BF16.</p>
+          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction. 2.19x faster than native PyTorch.</p>
         </div>
       </div>
 
@@ -1040,7 +1019,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>Memory movement, not arithmetic, dictates GPU performance. From an 8.5 GB OOM crash to a 0.49 ms/token decode latency—ready for PagedAttention in Chapter 4!</p>
+          <p>Memory movement, not arithmetic, dictates GPU performance. From an 8.5 GB OOM crash to a 14.2 ms decode time—ready for PagedAttention in Chapter 4!</p>
         </div>
       </div>
     </div>
