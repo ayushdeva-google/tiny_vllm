@@ -456,20 +456,23 @@
               <thead>
                 <tr>
                   <th>Implementation</th>
-                  <th>Per-Token Latency</th>
+                  <th>Raw Kernel</th>
+                  <th>End-to-End (from BF16)</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 <tr class="win">
                   <td>PyTorch Native (BF16 Baseline)</td>
-                  <td>0.57 ms</td>
+                  <td>0.27 ms</td>
+                  <td>0.56 ms</td>
                   <td>Baseline (1.00x)</td>
                 </tr>
                 <tr class="loss">
                   <td>Our CUDA Implementation</td>
-                  <td>0.72 ms</td>
-                  <td>1.27x SLOWER!</td>
+                  <td>0.67 ms</td>
+                  <td>1.85 ms</td>
+                  <td>1.2x to 3.3x SLOWER!</td>
                 </tr>
               </tbody>
             </table>
@@ -672,16 +675,16 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
 
         <div class="card" style="border-color: var(--green);">
-          <span class="tag" style="color: var(--green);">2. Unified Decode Progression (NVIDIA L4 · N = 8,192)</span>
+          <span class="tag" style="color: var(--green);">2. Standardized Decode Progression (NVIDIA L4 · N = 8,192)</span>
           <table class="bench" style="margin-top: 8px;">
-            <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Speedup</th></tr>
-            <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.57 ms</td><td>31.16 ms</td><td>1.00x</td></tr>
-            <tr class="loss"><td>1. Naive CUDA (No Split-K)</td><td>0.72 ms</td><td>43.73 ms</td><td>0.71x (1.40x slower)</td></tr>
-            <tr class="loss"><td>2. Initial Split-K (with Cast Tax)</td><td>5.01 ms</td><td>164.10 ms</td><td>0.19x (5.27x slower)</td></tr>
-            <tr><td>3. Warp Split-K (FP32 Registers)</td><td>0.43 ms</td><td>14.20 ms</td><td>2.19x</td></tr>
-            <tr class="win"><td>4. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">14.20 ms</td><td class="k">2.19x FASTER!</td></tr>
+            <tr><th>Implementation</th><th>Raw Kernel</th><th>End-to-End (BF16)</th><th>32 Tokens</th></tr>
+            <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.27 ms</td><td>0.56 ms / tok</td><td>31.16 ms (1.00x)</td></tr>
+            <tr class="loss"><td>1. Naive CUDA (No Split-K, 32 blks)</td><td>0.67 ms</td><td>1.85 ms / tok</td><td>43.73 ms (1.40x slower)</td></tr>
+            <tr class="loss"><td>2. First Split-K Attempt (Thread-0 Bug)</td><td>4.76 ms</td><td>5.01 ms / tok</td><td>164.10 ms (5.27x slower)</td></tr>
+            <tr><td>3. Warp-Parallel Split-K (FP32)</td><td>0.08 ms</td><td>0.17 ms / tok</td><td>14.20 ms (2.19x faster)</td></tr>
+            <tr class="win"><td>4. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">0.44 ms / tok</td><td class="k">14.20 ms (2.19x FASTER!)</td></tr>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Zero Python casting overhead, zero tensor copies. Total 32-token generation dropped from <strong>164.10 ms</strong> to <strong>14.20 ms</strong>—a <strong>2.19x speedup</strong> over native PyTorch!</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Notice: <strong>Both</strong> Naive CUDA and First Split-K paid the Python cast tax. The 5.01 ms disaster in Attempt 2 was caused by the <strong>Thread-0 serial bug</strong> (4.76 ms raw kernel), not the cast tax! Once parallelized across warps, Split-K dropped to 0.08 ms, and native BF16 killed the cast tax completely.</p>
         </div>
       </div>
 
