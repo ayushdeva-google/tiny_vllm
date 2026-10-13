@@ -684,7 +684,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
-          <p>Decode had one query row and we streamed only <em>K</em> and <em>V</em>. Prefill has 8,192 query rows. How do we tile <strong>both</strong> <em>Q</em> and <em>K</em> into on-chip SRAM at the same time?</p>
+          <p>Decode had one query row, so streaming <em>K</em> and <em>V</em> was enough. Prefill is 8,192 query rows against 8,192 keys, and we already know that score matrix cannot exist in VRAM. Where do we cut it, and does anything we've built so far carry over?</p>
         </div>
       </div>
     </div>
@@ -694,52 +694,71 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
   <section class="slide" data-title="Tiling Prefill">
     <div class="wrap">
       <div class="eyebrow green">Act 3 · The Full FlashAttention</div>
-      <h2>Scaling to Prefill: 2D Matrix Tiling</h2>
-      <p class="lede">In Prefill, Query is not 1 token. It's an entire prompt of 8,192 tokens. How do we tile both <em>Q</em> and <em>K</em> into on-chip SRAM?</p>
+      <h2>Scaling to Prefill: Two Cuts, Same Trick</h2>
+      <p class="lede">In prefill, <em>Q</em> is the whole prompt: 8,192 rows against 8,192 keys. We already know we cannot write that score matrix to VRAM. So where do we cut it, and what do we already know that helps?</p>
 
-      <div class="grid2">
-        <div>
-          <div class="card">
-            <h3>Grid &amp; Block Mapping</h3>
-            <p style="font-size: 13.5px;">Tile the queries into chunks of <span class="mono k-c">B<sub>r</sub> = 128</span> rows. Tile keys into chunks of <span class="mono k-a">B<sub>c</sub> = 128</span> columns.</p>
-            <div class="callout cyan" style="font-family: var(--mono); font-size: 12px; margin: 8px 0;">
-              Grid: dim3(ceil(8192/128), 32 heads, 1 batch)<br>
-              Block: dim3(128 threads)
-            </div>
-            <p style="font-size: 12.5px; color: var(--muted);">Each block owns a horizontal stripe of 128 Queries. Each thread <em>tx</em> ∈ [0..127] owns one row of <em>Q</em>.</p>
+      <div class="grid3" style="margin-top: 14px;">
+        <div class="card" style="border-top: 3px solid var(--red);">
+          <span class="tag" style="color: var(--red);">0 · The Full Matrix</span>
+          <p style="font-size: 13px; margin-top: 6px;">Per head, <em>S</em> = <em>Q K</em>ᵀ is <span class="mono">[8192 × 8192]</span>.</p>
+          <div class="callout red" style="font-family: var(--mono); font-size: 11.5px; margin: 8px 0; line-height: 1.5;">
+            32 heads × 8192² × 4 B = 8 GiB<br>
+            VRAM: no. SRAM: not even close.
           </div>
+          <p style="font-size: 12px; color: var(--muted); margin: 0;">Materializing it is exactly what crashed PyTorch on Slide 3.</p>
         </div>
 
-        <div>
-          <pre class="code"><span class="cm">// Inside Prefill Kernel:</span>
-<span class="kw">__shared__</span> float smem_K[128][64];
-<span class="kw">__shared__</span> float smem_V[128][64];
+        <div class="card" style="border-top: 3px solid var(--cyan);">
+          <span class="tag" style="color: var(--cyan);">1 · Cut Along Queries</span>
+          <p style="font-size: 13px; margin-top: 6px;">Slide 2 said output row <em>i</em> depends only on <em>Q<sub>i</sub></em> and all of <em>K</em>, <em>V</em>. So give each block a stripe of <span class="mono k-c">128 query rows</span> and the <strong>entire</strong> <em>K</em>, <em>V</em>.</p>
+          <div class="callout cyan" style="font-family: var(--mono); font-size: 11.5px; margin: 8px 0; line-height: 1.5;">
+            Grid: (8192 / 128 = 64, 32 heads, 1)<br>
+            = 2,048 independent blocks<br>
+            Block: 128 threads, 1 thread = 1 query row
+          </div>
+          <p style="font-size: 12px; color: var(--muted); margin: 0;">No dependency between stripes; trivially parallel. But each block still faces a <span class="mono">[128 × 8192]</span> slab: <strong>4 MiB</strong> of scores, and one thread's row alone is 32 KB.</p>
+        </div>
 
-<span class="kw">for</span> (int k_chunk = 0; k_chunk &lt;= q_chunk; ++k_chunk) {
-    <span class="cm">// 1. Collaborative load K into shared memory</span>
-    smem_K[tx][k] = K_cache[...];
-    __syncthreads();
-
-    <span class="cm">// 2. Compute 128 dot products &amp; update stats</span>
-    ...
-    <span class="cm">// 3. Collaborative load V into shared memory</span>
-    smem_V[tx][k] = V_cache[...];
-    __syncthreads();
-
-    <span class="cm">// 4. Accumulate into O</span>
-    ...
-}</pre>
+        <div class="card" style="border-top: 3px solid var(--green);">
+          <span class="tag" style="color: var(--green);">2 · Stream Along Keys</span>
+          <p style="font-size: 13px; margin-top: 6px;">Too many columns is the problem we solved on Slide 5. Walk the keys in chunks of <span class="mono k">128</span> and keep only running state per row.</p>
+          <div class="callout green" style="font-family: var(--mono); font-size: 11.5px; margin: 8px 0; line-height: 1.5;">
+            Per thread, in registers:<br>
+            &nbsp;&nbsp;m, l, O[64], scores[128]<br>
+            Per block, in shared memory:<br>
+            &nbsp;&nbsp;the current 128-key chunk of K and V
+          </div>
+          <p style="font-size: 12px; color: var(--muted); margin: 0;">A thread never holds more than 128 scores at once. The 8,192-wide row is never materialized.</p>
         </div>
       </div>
 
-      <div class="flow">
-        <div class="turn">
-          <span class="badge observe">Observation</span>
-          <p>Each thread keeps its own query row in registers for the entire kernel and the block cooperatively streams <em>K</em> and <em>V</em> chunks through shared memory. That gives two shared buffers of 128 × 64 FP32 values: <strong>32 KB each, 64 KB total</strong>.</p>
+      <div class="grid2" style="margin-top: 12px;">
+        <div>
+          <pre class="code" style="margin: 0;"><span class="cm">// One block = 128 query rows. One thread = one row.</span>
+float q_reg[64];  <span class="cm">// my query row, loaded once</span>
+float o_reg[64] = {0};  float m = -INF, l = 0;
+
+<span class="kw">__shared__</span> float smem_K[128][64];
+<span class="kw">__shared__</span> float smem_V[128][64];
+
+<span class="kw">for</span> (int k_chunk = 0; k_chunk &lt; 8192 / 128; ++k_chunk) {
+    smem_K[tx][:] = K[k_chunk*128 + tx][:];   __syncthreads();
+    <span class="cm">// 128 dot products for my row -> scores[128], chunk max</span>
+    smem_V[tx][:] = V[k_chunk*128 + tx][:];   __syncthreads();
+    <span class="cm">// Online Softmax update of m, l, o_reg (Slide 5)</span>
+}
+O[my_row][:] = o_reg[:] / l;</pre>
         </div>
-        <div class="turn">
-          <span class="badge ask">Question</span>
-          <p>How much static shared memory does an L4 actually let a single block declare? Will 64 KB compile?</p>
+
+        <div class="flow" style="margin-top: 0;">
+          <div class="turn">
+            <span class="badge observe">Observation</span>
+            <p>Nothing new was invented. Cut 1 is the row-independence from Slide 2; cut 2 is the streaming update from Slide 5, run by 128 threads side by side. The only new ingredient is shared memory: all 128 threads need the same key chunk, so the block loads it once and shares it. That is two buffers of 128 × 64 FP32: <strong>32 KB each, 64 KB total</strong>.</p>
+          </div>
+          <div class="turn">
+            <span class="badge ask">Question</span>
+            <p>How much static shared memory does an L4 actually let a single block declare? Will 64 KB compile?</p>
+          </div>
         </div>
       </div>
     </div>
