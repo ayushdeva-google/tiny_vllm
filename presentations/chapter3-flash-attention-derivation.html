@@ -565,24 +565,29 @@ O[k] = global_O_k / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 9: THE MISSING SPEEDUP BUG  -->
-  <section class="slide" data-title="The Mystery Bug">
+  <!-- SLIDE 9: THE HIDDEN CEILING  -->
+  <section class="slide" data-title="The Hidden Ceiling">
     <div class="wrap">
-      <div class="eyebrow red">Act 2 · The Forensic Investigation</div>
-      <h2>The Mystery of the 'Missing Speedup'</h2>
-      <p class="lede">Alex launched 2,048 thread blocks to saturate all 58 SMs. But profiling Split-K Decode end-to-end vs Native PyTorch revealed a demoralizing result.</p>
+      <div class="eyebrow cyan">Act 2 · Profiling Split-K</div>
+      <h2>The Mystery of the 'Hidden Ceiling'</h2>
+      <p class="lede">Alex implements Split-K Decode with warp-level reductions to saturate all 58 SMs. It beats PyTorch Native by 1.49x—but it still hits an unexpected performance ceiling.</p>
 
       <div class="grid2">
         <div>
-          <div class="card" style="border-color: var(--red);">
-            <h3 style="color: var(--red);">End-to-End Profile (32 Tokens @ 8,192 Context)</h3>
+          <div class="card" style="border-color: var(--amber);">
+            <h3 style="color: var(--amber);">End-to-End Profile (32 Tokens @ 8,192 Context)</h3>
             <table class="bench">
-              <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Status</th></tr>
-              <tr class="win"><td>PyTorch Native (BF16 Baseline)</td><td>0.96 ms</td><td>30.72 ms</td><td>1.00x (Baseline)</td></tr>
-              <tr class="loss"><td>Our Initial Split-K (End-to-End)</td><td>5.14 ms</td><td>164.50 ms</td><td>5.35x SLOWER!</td></tr>
+              <thead>
+                <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                <tr class="loss"><td>1. Naive CUDA (No Split-K)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
+                <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.96 ms</td><td>30.72 ms</td><td>1.00x (Baseline)</td></tr>
+                <tr class="win"><td>2. Warp Split-K (Our Kernel)</td><td>0.64 ms</td><td>20.57 ms</td><td>1.49x FASTER</td></tr>
+              </tbody>
             </table>
-            <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
-              <strong>The Anomaly:</strong> Instead of gaining 2x to 4x speedup by saturating all 58 SMs, end-to-end execution in PyTorch became <strong>5.35x slower</strong>!
+            <div class="callout amber" style="margin-top: 12px; font-size: 12.5px;">
+              <strong>The Puzzle:</strong> By distributing 2,048 blocks across all 58 SMs, we fixed SM starvation and beat PyTorch. But why did we only get <strong>1.49x speedup</strong> instead of the predicted <strong>2x+</strong>?
             </div>
           </div>
         </div>
@@ -591,15 +596,15 @@ O[k] = global_O_k / global_l;</pre>
           <div class="socratic-flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>We flooded all 58 SMs with 2,048 blocks. Why is end-to-end decode over 5x slower than PyTorch?</p>
+              <p>We solved SM starvation and beat PyTorch Native. But why didn't we see the full 2x+ speedup our arithmetic roofline predicted?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
-              <p>Never trust framework-level timestamps blindly. I wrote an isolated benchmark (`unified_decode_benchmark.py`) with native CUDA events to profile the bare hardware execution vs framework overhead.</p>
+              <p>The GPU kernel itself finished in under 0.44 ms! The bottleneck wasn't the CUDA kernel—framework overhead was eating 30% of our runtime outside the GPU.</p>
             </div>
             <div class="turn">
               <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Let's inspect what the profiler uncovered.</p>
+              <p>Let's look at the Python runtime boundary. What happens between the model's KV cache and your kernel?</p>
             </div>
           </div>
         </div>
@@ -611,44 +616,43 @@ O[k] = global_O_k / global_l;</pre>
   <section class="slide" data-title="The Cast Tax">
     <div class="wrap">
       <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
-      <h2>Unmasking the 'BFloat16 Cast Tax' &amp; Thread Stall</h2>
-      <p class="lede">The profiler revealed two distinct culprits: a hidden PyTorch memory copy and an idling thread block inside the kernel.</p>
+      <h2>Unmasking the 'BFloat16 Cast Tax'</h2>
+      <p class="lede">Profiling the boundary between PyTorch and our CUDA kernel uncovered a hidden memory allocation and bandwidth penalty.</p>
 
       <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--red);">Culprit 1 · The Hidden Python Bottleneck</span>
+          <span class="tag" style="color: var(--red);">Culprit 1 · The Hidden Python Allocations</span>
           <div class="callout red" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
             k = k_cache.to(torch.float32).contiguous()<br>
             v = v_cache.to(torch.float32).contiguous()<br>
-            Tax: ~1.68 ms across 16 layers per step!
+            Tax: ~0.20 ms per token across layers!
           </div>
-          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B weights are natively <code>BFloat16</code>. Our C++ kernel took <code>float32</code>. In the inference loop, PyTorch was allocating and casting 64MB of tensors on every single token step!</p>
+          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B stores the KV cache natively in <code>BFloat16</code> to save memory. Because our CUDA kernel expected <code>float*</code> (FP32), PyTorch had to allocate and convert 64 MB of tensors on every single token step!</p>
         </div>
 
         <div class="card">
-          <span class="tag" style="color: var(--amber);">Culprit 2 · The Thread-0 Serial Bottleneck</span>
+          <span class="tag" style="color: var(--amber);">Culprit 2 · 2x Wasted HBM Bandwidth</span>
           <div class="callout amber" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-            // Stage 1 flaw inside block:<br>
-            if (tx == 0) { // Thread 0 does all 128 keys!<br>
-            &nbsp;&nbsp;for (int c = 0; c &lt; 128; ++c) dot += q[k]*smem[c][k];<br>
-            } // 127 threads sat completely idle!
+            Decode is 100% memory bandwidth bound.<br>
+            FP32 = 4 bytes per element.<br>
+            BF16 = 2 bytes per element (50% less data).
           </div>
-          <p style="font-size: 12.5px; color: var(--muted);">While 128 threads were spawned per block, thread 0 did all the math sequentially. Replacing this with parallel <strong>warp reductions</strong> dropped kernel time to <strong>0.43 ms</strong>!</p>
+          <p style="font-size: 12.5px; color: var(--muted);">Even inside the kernel, streaming 4-byte FP32 values from global memory saturates the memory bus twice as fast as reading 2-byte 16-bit values, capping our memory throughput.</p>
         </div>
       </div>
 
       <div class="socratic-flow">
         <div class="turn">
           <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>So the 5.01 ms delay came from two compounding mistakes: serial thread work and framework casting?</p>
+          <p>So the kernel was held back by framework casting and redundant memory bandwidth?</p>
         </div>
         <div class="turn">
           <span class="badge solve">Alex (Solution)</span>
-          <p>Exactly. Thread 0 was computing dot products alone in Stage 1, while Python was re-allocating 64 MB of tensors on every token step! Once we parallelize reductions across warps and eliminate the cast, speedup is unlocked.</p>
+          <p>Exactly. We shouldn't cast tensors in Python. We must pass native <code>BFloat16</code> pointers straight into the CUDA kernel and do the FP32 upcast inside registers on the fly!</p>
         </div>
         <div class="turn">
           <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Now let's eliminate the Python cast completely with native <code>__nv_bfloat16</code>.</p>
+          <p>Let's implement native <code>__nv_bfloat16</code> support in our kernel.</p>
         </div>
       </div>
     </div>
@@ -687,8 +691,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
               <tr class="win"><td>3. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">14.09 ms</td><td class="k">2.18x FASTER!</td></tr>
             </tbody>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Your intuition is exact: <strong>Naive CUDA is worst</strong> (SM starvation). <strong>Warp Split-K</strong> saturates all 58 SMs but pays the Python cast tax. <strong>Native BF16</strong> eliminates the cast and halves HBM bandwidth, reaching the peak <strong>2.18x speedup</strong>!</p>
-          <p style="font-size: 11.5px; color: var(--muted); margin-top: 4px; font-style: italic;">*Note on Attempt 1: Alex's initial 5.01 ms spike was an accidental <code>if (tx == 0)</code> serial bug, completely resolved by warp reductions.</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">The complete Decode progression: <strong>Naive CUDA is slowest</strong> due to SM starvation. <strong>Warp Split-K</strong> saturates all 58 SMs to beat PyTorch by <strong>1.49x</strong>. <strong>Native BF16</strong> eliminates the Python cast tax and cuts memory bus traffic in half, reaching a <strong>2.18x speedup</strong>!</p>
         </div>
       </div>
 
