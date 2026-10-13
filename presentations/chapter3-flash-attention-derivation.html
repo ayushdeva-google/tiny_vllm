@@ -76,8 +76,8 @@
     code, .mono { font-family: var(--mono); }
     .k { color: var(--green); } .k-a { color: var(--amber); } .k-c { color: var(--cyan); } .k-v { color: var(--violet); } .k-r { color: var(--red); }
 
-    /* Socratic Flow */
-    .socratic-flow {
+    /* Observation → Question Flow */
+    .flow {
       background: var(--surface2); border: 1px solid var(--line); border-radius: 10px;
       padding: 12px 16px; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px;
     }
@@ -87,9 +87,8 @@
       font-family: var(--display); font-size: 10.5px; font-weight: 700; text-transform: uppercase;
       letter-spacing: .08em; padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
     }
-    .badge.probe { background: var(--violet); color: #120b22; }
-    .badge.solve { background: var(--cyan); color: #071f28; }
-    .badge.nudge { background: var(--amber); color: #2e1a05; }
+    .badge.observe { background: var(--cyan); color: #071f28; }
+    .badge.ask { background: var(--violet); color: #120b22; }
 
     /* Layout Elements */
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
@@ -185,18 +184,18 @@
   <!-- SLIDE 1: PROLOGUE  -->
   <section class="slide" data-title="Prologue">
     <div class="wrap">
-      <div class="eyebrow violet">Silicon &amp; Socratic Derivation</div>
+      <div class="eyebrow violet">From Math to Silicon</div>
       <h1>Deriving FlashAttention<br>From Math to Silicon</h1>
-      <p class="lede">How a first-principles derivation of Online Softmax rescued an 8,192-token prompt from a catastrophic CUDA OOM and beat NVIDIA's native cuBLAS by 2.32x.</p>
+      <p class="lede">How a first-principles derivation of Online Softmax rescued an 8,192-token prompt from a catastrophic CUDA OOM and beat PyTorch's native decode path by 2.18x.</p>
       
       <div class="grid2" style="margin-top: 24px;">
-        <div class="card" style="border-left: 3px solid var(--violet);">
-          <span class="badge probe">Dr. Chen · Senior GPU Architect</span>
-          <p style="margin-top: 8px; font-size: 13.5px; color: var(--text);">"Every byte written to HBM is an engineering failure if it could have lived in registers. Don't memorize Tri Dao's paper. Derive it from memory physics."</p>
+        <div class="card" style="border-left: 3px solid var(--red);">
+          <span class="tag" style="color: var(--red);">The Problem</span>
+          <p style="margin-top: 8px; font-size: 13.5px; color: var(--text);">We already know thread blocks, warps, and how to fuse RMSNorm. But the moment LLaMA-3.2-1B sees an 8,192-token context, standard attention crashes a 24 GB L4 with CUDA Out-of-Memory.</p>
         </div>
         <div class="card" style="border-left: 3px solid var(--cyan);">
-          <span class="badge solve">Alex · Systems Engineer</span>
-          <p style="margin-top: 8px; font-size: 13.5px; color: var(--text);">"I know thread blocks, warps, and how to fuse RMSNorm. But our LLaMA-3.2-1B model just hit an 8,192-token context and crashed my 24GB L4 GPU. Let's fix it."</p>
+          <span class="tag" style="color: var(--cyan);">The Approach</span>
+          <p style="margin-top: 8px; font-size: 13.5px; color: var(--text);">Don't memorize Tri Dao's paper. Derive it from memory physics: every byte written to HBM is an engineering failure if it could have lived in registers.</p>
         </div>
       </div>
       
@@ -250,18 +249,14 @@
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Output row <em>O<sub>i</sub></em> only depends on query row <em>i</em> and the key/value matrices. Tokens are computed independently. Why does materializing this matrix explode memory?</p>
+          <span class="badge observe">Observation</span>
+          <p>Output row <em>O<sub>i</sub></em> depends only on query row <em>i</em> and the shared <em>K</em>, <em>V</em> matrices. Every row is independent. Yet PyTorch doesn't compute row by row: it materializes all 8,192 rows for all 32 heads in global VRAM at once.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Because when scaling to 32 heads, PyTorch doesn't compute row by row. It materializes all 8,192 rows for all 32 heads in global VRAM simultaneously (17.16 GB)! If we tile row-by-row, we never need the full matrix in memory.</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Correct. But before we tile, see what happens when naive PyTorch runs all 32 heads at once.</p>
+          <span class="badge ask">Question</span>
+          <p>If the math never needs the whole matrix at once, how much memory is PyTorch actually spending to hold it, and what happens at 8,192 tokens?</p>
         </div>
       </div>
     </div>
@@ -298,18 +293,14 @@
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>The actual inputs <em>Q</em>, <em>K</em>, <em>V</em> are tiny (64MB total); the final output <em>O</em> is only 2MB. How do we compute Attention in tiles without writing that 17 GB intermediate matrix to global VRAM?</p>
+          <span class="badge observe">Observation</span>
+          <p>The actual inputs <em>Q</em>, <em>K</em>, <em>V</em> are tiny (64 MB total) and the final output <em>O</em> is only 2 MB. The entire 17 GB is intermediate. If we stream keys in small chunks into on-chip SRAM, compute attention there, and accumulate directly into registers, that matrix never needs to exist.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>We must stream keys in small chunks into fast on-chip SRAM (Shared Memory), compute attention, and accumulate directly into registers!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Softmax requires global row state to normalize. How do you compute it incrementally?</p>
+          <span class="badge ask">Question</span>
+          <p>Softmax needs the max and sum over the <strong>entire</strong> row before it can normalize a single probability. How can we compute it chunk by chunk without ever seeing the full row?</p>
         </div>
       </div>
     </div>
@@ -340,18 +331,14 @@
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>To stream in tiles, you must compute Softmax incrementally. But what happens if chunk 2 contains a larger value than chunk 1?</p>
+          <span class="badge observe">Observation</span>
+          <p>All three passes depend on the row max <em>m</em>. If we process chunk 1 using its local max, and chunk 2 then arrives with a larger value, every exponential we computed for chunk 1 was measured against the wrong <em>m</em>. Its contribution to <em>l</em> and <em>O</em> is now stale.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>We don't need to re-read chunk 1! We just scale our old sum and accumulator by the exponential difference α = e<sup>(m<sub>prev</sub> - m<sub>new</sub>)</sup>!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Write down the exact update equations for the streaming loop.</p>
+          <span class="badge ask">Question</span>
+          <p>Can we repair chunk 1's stale partial sums <strong>without re-reading chunk 1</strong>? What single scalar relates "exponentials against the old max" to "exponentials against the new max"?</p>
         </div>
       </div>
     </div>
@@ -362,7 +349,7 @@
     <div class="wrap">
       <div class="eyebrow green">Act 1 · The Mathematical Key</div>
       <h2>The Derivation: Streaming Online Softmax</h2>
-      <p class="lede">Alex's mathematical breakthrough: As new chunks stream in, you find the latest max first. The new chunk needs zero rescaling—only the past accumulator is scaled down.</p>
+      <p class="lede">The key insight: as new chunks stream in, update to the latest max <strong>first</strong>. The new chunk needs zero rescaling. Only the past accumulator is scaled down by a single factor α.</p>
 
       <div class="grid2">
         <div class="card">
@@ -382,18 +369,14 @@
         </div>
 
         <div>
-          <div class="socratic-flow" style="margin-top: 0;">
+          <div class="flow" style="margin-top: 0;">
             <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>When a new chunk arrives with raw dot products, does the new chunk need rescaling?</p>
+              <span class="badge observe">Observation</span>
+              <p>The update is asymmetric. Because we compute <em>m</em><sub>new</sub> before touching the new chunk, its exponentials are already measured against the right max. <strong>Only the past state</strong> gets multiplied by α. The only time both sides need rescaling is when merging two <em>independent</em> partial results, which we'll meet later in Split-K.</p>
             </div>
             <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>No! We update to <em>m</em><sub>new</sub> first. The new chunk evaluates its exponentials directly against <em>m</em><sub>new</sub>. ONLY the past accumulated state gets scaled down by α!</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Precisely. The only time you scale both chunks is in a parallel tree reduction (like Split-K Stage 2). In FlashAttention's streaming loop, the new chunk is always computed directly at the latest max.</p>
+              <span class="badge ask">Question</span>
+              <p>This looks right algebraically. Does it actually reproduce the exact softmax probabilities when we run it on real numbers?</p>
             </div>
           </div>
 
@@ -436,6 +419,17 @@
           Notice that at no point did the algorithm allocate an array of size 4. It only ever maintained three scalar variables: <code class="k-a">m</code> (current max), <code class="k-c">l</code> (current denominator), and the vector <code class="k">O</code>. In a GPU, these live entirely inside a thread's <strong>private register file</strong> (~1 cycle access).
         </p>
       </div>
+
+      <div class="flow">
+        <div class="turn">
+          <span class="badge observe">Observation</span>
+          <p>The math is exact and the working set is three registers. We're ready to write a kernel. But full prefill means tiling an 8,192 × 8,192 problem across both <em>Q</em> and <em>K</em> at once.</p>
+        </div>
+        <div class="turn">
+          <span class="badge ask">Question</span>
+          <p>Is there a simpler case where we can validate Online Softmax on real silicon first, one where <em>Q</em> is a single row and only <em>K</em> needs to stream?</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -444,13 +438,13 @@
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Starting Small</div>
       <h2>First Target: The Decode Phase</h2>
-      <p class="lede">Rather than jumping straight to the complex <em>N</em> × <em>N</em> prefill matrix, Alex implements Online Softmax on token generation (Decode), where <em>Q</em> is just 1 token. But the initial benchmark is alarming.</p>
+      <p class="lede">Decode is the simpler case: <em>Q</em> is a single token, so only <em>K</em> and <em>V</em> need to stream. We implement Online Softmax here first. The initial benchmark is not what we hoped for.</p>
 
       <div class="grid2">
         <div>
           <div class="card" style="border-color: var(--red);">
             <h3 style="color: var(--red);">The Initial Benchmark</h3>
-            <p style="font-size: 13px;">Alex maps 1 thread block to each attention head: <span class="mono">Grid: (32 heads, 1 batch)</span>. Each block streams through all 8,192 keys using the newly derived Online Softmax formula.</p>
+            <p style="font-size: 13px;">We map 1 thread block to each attention head: <span class="mono">Grid: (32 heads, 1 batch)</span>. Each block streams through all 8,192 keys using the Online Softmax update we just derived.</p>
 
             <table class="bench" style="margin-top: 10px;">
               <thead>
@@ -485,22 +479,14 @@
         </div>
 
         <div>
-          <div class="socratic-flow" style="margin-top: 0;">
+          <div class="flow" style="margin-top: 0;">
             <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>We fused the operations and implemented Online Softmax. Why is our custom kernel 1.42x slower than PyTorch Native?</p>
+              <span class="badge observe">Observation</span>
+              <p>We fused the operations and eliminated every intermediate write, yet we're <strong>slower</strong>. The kernel isn't memory-inefficient; it's <strong>under-parallelized</strong>. Batch = 1 × 32 heads gives us only 32 blocks for 58 SMs, and each block walks 8,192 keys one after another.</p>
             </div>
             <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>SM starvation! Batch=1 with 32 heads launches only 32 thread blocks. Our L4 GPU has 58 SMs—26 SMs (45% of the chip!) sit completely idle while the active blocks grind through 8,192 tokens sequentially.</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>If <em>Q</em> has only 1 token, where can we find more parallel work to saturate all 58 SMs?</p>
-            </div>
-            <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>Along the sequence (<em>K</em>) dimension! Instead of 1 block doing all 8,192 keys, partition the keys into chunks of 128 and parallelize across the GPU: Split-K!</p>
+              <span class="badge ask">Question</span>
+              <p>In prefill we'd parallelize across query rows. But in decode <em>Q</em> is a single token. What other dimension of this problem can we split across the idle SMs?</p>
             </div>
           </div>
         </div>
@@ -513,7 +499,7 @@
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Two-Stage Pipeline</div>
       <h2>The Solution: Split-K Decode Architecture</h2>
-      <p class="lede">To saturate all 58 SMs, Alex splits the sequence into 64 chunks of 128 keys. Stage 1 distributes 2,048 blocks across the entire GPU; Stage 2 merges them in thread registers.</p>
+      <p class="lede">The answer is the sequence dimension itself. We split the 8,192 keys into 64 chunks of 128. Stage 1 distributes 2,048 blocks across the entire GPU; Stage 2 merges the partial results in thread registers.</p>
 
       <div class="grid2">
         <div class="card" style="border-top: 3px solid var(--cyan);">
@@ -552,14 +538,14 @@ O[k] = global_O_k / global_l;</pre>
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>Stage 2 merges 64 partial outputs from Stage 1. Why scan <code>global_m</code> first instead of 1-pass streaming?</p>
+          <span class="badge observe">Observation</span>
+          <p>Stage 2 is the symmetric merge we flagged on Slide 5: the 64 partials are independent, so <strong>every</strong> one must be rescaled to a common max. Scanning <code>global_m</code> first costs 64 cycles and buys a lot: half the <code>expf()</code> calls of a streaming merge, no repeated accumulator rescaling, and fully coalesced reads from <code>partial_O</code>.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>All 64 chunks are already in VRAM! Scanning 64 numbers takes just 64 cycles. It cuts expensive <code>expf()</code> calls by 50%, eliminates repeated accumulator rescaling, and runs entirely in fast registers with 100% coalesced memory reads!</p>
+          <span class="badge ask">Question</span>
+          <p>With 2,048 blocks now covering all 58 SMs, the roofline predicts at least a 2x gain over our first kernel. Does the end-to-end benchmark agree?</p>
         </div>
       </div>
     </div>
@@ -570,7 +556,7 @@ O[k] = global_O_k / global_l;</pre>
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Profiling Split-K</div>
       <h2>The Mystery of the 'Hidden Ceiling'</h2>
-      <p class="lede">Alex implements Split-K Decode with warp-level reductions to saturate all 58 SMs. It beats PyTorch Native by 1.49x—but it still hits an unexpected performance ceiling.</p>
+      <p class="lede">Split-K with warp-level reductions saturates all 58 SMs and beats PyTorch Native by 1.49x. That's a real win, but it's short of the 2x+ the hardware should deliver.</p>
 
       <div class="grid2">
         <div>
@@ -593,18 +579,14 @@ O[k] = global_O_k / global_l;</pre>
         </div>
 
         <div>
-          <div class="socratic-flow" style="margin-top: 0;">
+          <div class="flow" style="margin-top: 0;">
             <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>We solved SM starvation and beat PyTorch Native. But why didn't we see the full 2x+ speedup our arithmetic roofline predicted?</p>
+              <span class="badge observe">Observation</span>
+              <p>Timing the kernel alone with CUDA events tells a different story: the GPU finishes its work in roughly <strong>0.44 ms</strong>. The remaining ~0.20 ms per token, about 30% of the total, is spent <em>outside</em> the kernel, in the framework.</p>
             </div>
             <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>The GPU kernel itself finished in under 0.44 ms! The bottleneck wasn't the CUDA kernel—framework overhead was eating 30% of our runtime outside the GPU.</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Let's look at the Python runtime boundary. What happens between the model's KV cache and your kernel?</p>
+              <span class="badge ask">Question</span>
+              <p>Our kernel takes <code>float*</code> pointers, but LLaMA stores its KV cache in <code>BFloat16</code>. What has to happen between the model's cache and our kernel on <strong>every</strong> token step?</p>
             </div>
           </div>
         </div>
@@ -641,18 +623,14 @@ O[k] = global_O_k / global_l;</pre>
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>So the kernel was held back by framework casting and redundant memory bandwidth?</p>
+          <span class="badge observe">Observation</span>
+          <p>Two costs compound. First, Python allocates and converts 64 MB of tensors on every token just to satisfy our <code>float*</code> signature. Second, even once converted, the kernel is streaming twice as many bytes per key as the data actually contains. In a memory-bound phase, that's the whole game.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Exactly. We shouldn't cast tensors in Python. We must pass native <code>BFloat16</code> pointers straight into the CUDA kernel and do the FP32 upcast inside registers on the fly!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Let's implement native <code>__nv_bfloat16</code> support in our kernel.</p>
+          <span class="badge ask">Question</span>
+          <p>What if the kernel accepted <code>BFloat16</code> pointers directly from VRAM and did the FP32 upcast inside registers, one value at a time? Would that remove both costs at once?</p>
         </div>
       </div>
     </div>
@@ -695,18 +673,14 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>What is the physical advantage of native BFloat16 in Decode besides eliminating the Python cast?</p>
+          <span class="badge observe">Observation</span>
+          <p>Removing the cast took us from 0.64 ms to 0.44 ms per token, more than the 0.20 ms the Python conversion alone cost. The extra gain is bandwidth: decode is memory-bound, so halving the bytes per key directly halves the time spent on the memory bus.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Memory bandwidth! Decode is 100% memory-bandwidth bound. Reading 2-byte BFloat16 instead of 4-byte Float32 cuts bytes transferred from HBM by half. The tax is gone, and the kernel runs even faster!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>Now let's tackle the 2D tiling mechanics of full Prefill.</p>
+          <span class="badge ask">Question</span>
+          <p>Decode had one query row and we streamed only <em>K</em> and <em>V</em>. Prefill has 8,192 query rows. How do we tile <strong>both</strong> <em>Q</em> and <em>K</em> into on-chip SRAM at the same time?</p>
         </div>
       </div>
     </div>
@@ -754,14 +728,14 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>In Prefill, <em>Q</em> is 8,192 tokens. How do we map this to blocks?</p>
+          <span class="badge observe">Observation</span>
+          <p>Each thread keeps its own query row in registers for the entire kernel and the block cooperatively streams <em>K</em> and <em>V</em> chunks through shared memory. That gives two shared buffers of 128 × 64 FP32 values: <strong>32 KB each, 64 KB total</strong>.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Tile <em>Q</em> into 128 queries per block. The block keeps <em>Q</em> in registers and loops through <em>K</em> and <em>V</em> chunks in shared memory!</p>
+          <span class="badge ask">Question</span>
+          <p>How much static shared memory does an L4 actually let a single block declare? Will 64 KB compile?</p>
         </div>
       </div>
     </div>
@@ -772,7 +746,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
     <div class="wrap">
       <div class="eyebrow red">Act 3 · Hardware Constraints</div>
       <h2>The Hardware Trap: 48 KB Static SRAM</h2>
-      <p class="lede">Alex hit compile on the prefill kernel. The NVIDIA PTX compiler immediately threw a fatal error.</p>
+      <p class="lede">It does not compile. The NVIDIA PTX assembler rejects the prefill kernel immediately.</p>
 
       <div class="grid2">
         <div class="card" style="border-color: var(--red);">
@@ -789,18 +763,14 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
 
         <div>
-          <div class="socratic-flow" style="margin-top: 0;">
+          <div class="flow" style="margin-top: 0;">
             <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>Static shared memory is capped at 48 KB. <em>K</em> (32 KB) + <em>V</em> (32 KB) = 64 KB. How do you fit without shrinking chunk size?</p>
+              <span class="badge observe">Observation</span>
+              <p>Look at <em>when</em> each buffer is used. <em>K</em> is only needed to compute the 128 dot products. By the time we need <em>V</em>, those scores are already sitting in registers and <em>K</em> is dead. The two buffers are never live at the same moment.</p>
             </div>
             <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>Temporal Buffer Reuse! <em>K</em> is only used for dot products. Once scores are computed, reuse the exact same 32 KB buffer for <em>V</em>!</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>What about causal masking inside the loop?</p>
+              <span class="badge ask">Question</span>
+              <p>So one 32 KB buffer can serve both: load <em>K</em>, compute scores, then overwrite it with <em>V</em>. That fits. But prefill is causal: query <em>i</em> may only attend to keys <em>j</em> ≤ <em>i</em>. Where in this loop does that check belong, and what does it cost?</p>
             </div>
           </div>
         </div>
@@ -830,18 +800,14 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
       </div>
 
-      <div class="socratic-flow">
+      <div class="flow">
         <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>If threads branch on `if (col > row)` inside every chunk, warps diverge. How do we eliminate divergence?</p>
+          <span class="badge observe">Observation</span>
+          <p>A naive <code>if (col &gt; row)</code> on every element would diverge every warp on every chunk. But the mask only has structure at one place: the diagonal. Chunks strictly in the past need no check at all, and chunks strictly in the future are never loaded. Pruning the future halves total compute (<em>N</em>² / 2) and confines all divergence to 1 chunk out of every 64.</p>
         </div>
         <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Past chunks (<em>j</em> &lt; <em>i</em>) are 100% branchless. Future chunks (<em>j</em> &gt; <em>i</em>) are pruned entirely. Only the diagonal chunk (<em>j</em> == <em>i</em>) runs the causal branch!</p>
-        </div>
-        <div class="turn">
-          <span class="badge nudge">Dr. Chen (Nudge)</span>
-          <p>By pruning future chunks, you cut total compute by 50% (<em>N</em>² / 2) with zero divergence on 90% of chunks.</p>
+          <span class="badge ask">Question</span>
+          <p>The prefill kernel now compiles, fits in 32 KB of SRAM, and handles causality cleanly. How does it compare to PyTorch's cuBLAS path, and does the answer change as the context grows?</p>
         </div>
       </div>
     </div>
@@ -915,18 +881,14 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
             </p>
           </div>
 
-          <div class="socratic-flow" style="margin-top: 10px;">
+          <div class="flow" style="margin-top: 10px;">
             <div class="turn">
-              <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>PyTorch is ~1.8× faster at 8k context. Did our fused kernel fail?</p>
+              <span class="badge observe">Observation</span>
+              <p>At 8k, PyTorch is ~1.8x faster, but not because our algorithm is wrong. cuBLAS dispatches to Tensor Cores (242 TFLOPs); our scalar FMA loops run on CUDA cores (30 TFLOPs). Past 8k the comparison stops mattering: PyTorch needs 18–32 GB of intermediate VRAM and crashes, while our kernel needs <strong>0 GB extra</strong> and keeps scaling.</p>
             </div>
             <div class="turn">
-              <span class="badge solve">Alex (Solution)</span>
-              <p>No! PyTorch dispatches to Tensor Cores (242 TFLOPs). We used scalar CUDA cores (30 TFLOPs). But at 12k+ tokens, PyTorch demands 18 GB+ of intermediate VRAM and crashes with OOM! Our kernel scales without limits.</p>
-            </div>
-            <div class="turn">
-              <span class="badge nudge">Dr. Chen (Nudge)</span>
-              <p>Speed is irrelevant if the engine crashes. FlashAttention buys survival on long prompts. Now, let's synthesize the complete picture: why does LLM inference require two fundamentally different kernels?</p>
+              <span class="badge ask">Question</span>
+              <p>Step back. Prefill wanted SRAM tiling and data reuse. Decode wanted registers, Split-K, and raw memory bandwidth. Same attention formula, opposite kernel designs. Why?</p>
             </div>
           </div>
         </div>
@@ -1010,27 +972,20 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
     <div class="wrap">
       <div class="eyebrow green">Epilogue · Engineering Rules</div>
       <h2>The 5 Cardinal Rules of GPU LLM Inference</h2>
-      <p class="lede">What Dr. Chen and Alex learned on the metal.</p>
+      <p class="lede">What the metal taught us.</p>
 
       <div class="card" style="padding: 18px 22px;">
         <ol class="clean" style="gap: 12px; font-size: 14px;">
           <li><strong><em>O</em>(<em>N</em>²) Memory is a Choice, Not a Law of Physics:</strong> Intermediate attention matrices do not need to exist in VRAM. Online Softmax allows calculating the exact output in <em>O</em>(1) memory.</li>
-          <li><strong>Beware the "Cast Tax":</strong> Python-level type conversions (`bfloat16` to `float32`) take multiple milliseconds and will silently mask a 2x raw kernel speedup.</li>
+          <li><strong>Beware the "Cast Tax":</strong> A Python-level type conversion (<code>bfloat16</code> to <code>float32</code>) on every token step cost ~30% of our decode time and silently hid most of the kernel's real speedup.</li>
           <li><strong>Temporal SRAM Reuse Beats Static Limits:</strong> If <em>K</em> and <em>V</em> don't fit in shared memory at once, load <em>K</em>, compute dot products, and overwrite the same buffer with <em>V</em>.</li>
-          <li><strong>Confine Warp Divergence to the Diagonal:</strong> In causal masking, 90% of your chunks are strictly in the past and can run 100% branchless.</li>
-          <li><strong>Decode Demands Parallel Vectors, Not SRAM Loops:</strong> For <em>Q</em> = 1, map 1 thread to 1 token, stream keys directly into registers, and reduce with fast tree shuffles.</li>
+          <li><strong>Confine Warp Divergence to the Diagonal:</strong> In causal masking, every chunk except the diagonal is strictly past or strictly future. Past chunks run branchless; future chunks are never loaded.</li>
+          <li><strong>Decode Demands Parallel Vectors, Not SRAM Loops:</strong> For <em>Q</em> = 1, split along the key dimension, stream keys directly into registers, and reduce with warp shuffles.</li>
         </ol>
       </div>
 
-      <div class="socratic-flow" style="margin-top: 16px;">
-        <div class="turn">
-          <span class="badge probe">Dr. Chen (Probe)</span>
-          <p>You didn't just optimize code. You derived an algorithm by listening to the memory hierarchy. What is the fundamental lesson?</p>
-        </div>
-        <div class="turn">
-          <span class="badge solve">Alex (Solution)</span>
-          <p>Memory movement, not arithmetic, dictates GPU performance. From an 8.5 GB OOM crash to a 14.2 ms decode time—ready for PagedAttention in Chapter 4!</p>
-        </div>
+      <div class="callout green" style="margin-top: 16px;">
+        <strong>The fundamental lesson:</strong> memory movement, not arithmetic, dictates GPU performance. Every kernel in this chapter was derived by asking where the bytes live, not by counting FLOPs. From an 8.5 GB OOM crash to 14.09 ms for 32 decode tokens, and ready for PagedAttention in Chapter 4.
       </div>
     </div>
   </section>
