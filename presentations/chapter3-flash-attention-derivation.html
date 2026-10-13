@@ -456,23 +456,23 @@
               <thead>
                 <tr>
                   <th>Implementation</th>
-                  <th>Raw Kernel</th>
-                  <th>End-to-End (from BF16)</th>
+                  <th>Per Token</th>
+                  <th>Total (32 tok)</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 <tr class="win">
                   <td>PyTorch Native (BF16 Baseline)</td>
-                  <td>0.27 ms</td>
-                  <td>0.56 ms</td>
-                  <td>Baseline (1.00x)</td>
+                  <td>0.96 ms</td>
+                  <td>30.72 ms</td>
+                  <td>1.00x (Baseline)</td>
                 </tr>
                 <tr class="loss">
-                  <td>Our CUDA Implementation</td>
-                  <td>0.67 ms</td>
-                  <td>1.85 ms</td>
-                  <td>1.2x to 3.3x SLOWER!</td>
+                  <td>1. Our CUDA Implementation (No Split-K)</td>
+                  <td>1.37 ms</td>
+                  <td>43.77 ms</td>
+                  <td>0.70x (1.42x SLOWER!)</td>
                 </tr>
               </tbody>
             </table>
@@ -488,7 +488,7 @@
           <div class="socratic-flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge probe">Dr. Chen (Probe)</span>
-              <p>We fused the operations and implemented Online Softmax. Why is our custom kernel 1.27x slower than PyTorch Native?</p>
+              <p>We fused the operations and implemented Online Softmax. Why is our custom kernel 1.42x slower than PyTorch Native?</p>
             </div>
             <div class="turn">
               <span class="badge solve">Alex (Solution)</span>
@@ -691,7 +691,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
               <tr class="win"><td>3. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">14.09 ms</td><td class="k">2.18x FASTER!</td></tr>
             </tbody>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">The complete Decode progression: <strong>Naive CUDA is slowest</strong> due to SM starvation. <strong>Warp Split-K</strong> saturates all 58 SMs to beat PyTorch by <strong>1.49x</strong>. <strong>Native BF16</strong> eliminates the Python cast tax and cuts memory bus traffic in half, reaching a <strong>2.18x speedup</strong>!</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">The complete Decode progression: <strong>our first CUDA kernel is slowest</strong> due to SM starvation. <strong>Warp Split-K</strong> saturates all 58 SMs to beat PyTorch by <strong>1.49x</strong>. <strong>Native BF16</strong> eliminates the Python cast tax and cuts memory bus traffic in half, reaching a <strong>2.18x speedup</strong>!</p>
         </div>
       </div>
 
@@ -992,7 +992,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         <div class="card">
           <span class="tag">Chapter 3 · Decode</span>
           <h3>Warp Flash Decode</h3>
-          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction. 2.19x faster than native PyTorch.</p>
+          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction + native BF16. 2.18x faster than native PyTorch.</p>
         </div>
       </div>
 
