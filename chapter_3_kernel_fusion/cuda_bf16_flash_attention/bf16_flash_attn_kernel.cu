@@ -160,6 +160,7 @@ __global__ void splitk_decode_stage1_warp_bf16(
         __syncthreads();
     }
     float m_i = smem_reduce[0];
+    __syncthreads(); // every warp must read m_i before anyone overwrites smem_reduce
     
     // 3. Tree reduction for sum
     float p = (token_idx < seq_len) ? expf(score - m_i) : 0.0f;

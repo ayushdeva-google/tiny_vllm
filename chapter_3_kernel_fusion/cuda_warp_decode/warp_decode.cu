@@ -51,6 +51,7 @@ __global__ void splitk_decode_stage1_warp(
         __syncthreads();
     }
     float m_i = smem_reduce[0];
+    __syncthreads(); // every warp must read m_i before anyone overwrites smem_reduce
     
     // 4. Block Reduction to find Sum
     float p = (token_idx < seq_len) ? expf(score - m_i) : 0.0f;

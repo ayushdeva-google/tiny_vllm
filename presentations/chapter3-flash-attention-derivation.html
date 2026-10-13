@@ -186,7 +186,7 @@
     <div class="wrap">
       <div class="eyebrow violet">From Math to Silicon</div>
       <h1>Deriving FlashAttention<br>From Math to Silicon</h1>
-      <p class="lede">How a first-principles derivation of Online Softmax rescued an 8,192-token prompt from a catastrophic CUDA OOM and beat PyTorch's native decode path by 2.18x.</p>
+      <p class="lede">How a first-principles derivation of Online Softmax took an 8,192-token prompt from a CUDA OOM to a kernel that runs cleanly at 16k, and made decode 1.3x faster than PyTorch's native path.</p>
       
       <div class="grid2" style="margin-top: 24px;">
         <div class="card" style="border-left: 3px solid var(--red);">
@@ -266,17 +266,19 @@
   <section class="slide" data-title="The Memory Wall">
     <div class="wrap">
       <div class="eyebrow red">Act 1 · The Crime Scene</div>
-      <h2>The Catastrophe: The 8.5 GB Wall</h2>
-      <p class="lede">Standard Attention in PyTorch is mathematically clean, but on long contexts it creates an intermediate tensor that kills the GPU.</p>
+      <h2>The Catastrophe: The Memory Wall</h2>
+      <p class="lede">Standard attention is mathematically clean, but the way our model computes it allocates several full <em>N</em> × <em>N</em> tensors per layer. On long contexts that kills the GPU.</p>
 
       <div class="grid2">
         <div>
-          <pre class="code"><span class="cm"># Standard Attention in PyTorch</span>
-<span class="kw">def</span> <span class="fn">naive_attention</span>(Q, K, V):
-    <span class="cm"># Q, K: [Batch, Heads=32, N=8192, d=64]</span>
-    <span class="err">scores = torch.matmul(Q, K.transpose(-2, -1)) / 8.0</span>
-    <span class="err">probs = torch.softmax(scores, dim=-1)</span>
-    <span class="kw">return</span> torch.matmul(probs, V)</pre>
+          <pre class="code"><span class="cm"># Attention as written in our LLaMA model</span>
+<span class="cm"># Q, K: [Batch, Heads=32, N=8192, d=64], BF16</span>
+<span class="err">scores = torch.matmul(Q, K.transpose(-2, -1)) / 8.0</span>
+<span class="err">mask   = torch.full((N, N), -inf).triu(1)</span>
+<span class="err">scores = scores + mask</span>
+<span class="err">probs  = F.softmax(scores, dim=-1, dtype=torch.float32).to(bf16)</span>
+<span class="kw">return</span> torch.matmul(probs, V)</pre>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 6px;">Every red line allocates a fresh <em>N</em> × <em>N</em> × 32 tensor. The FP32 softmax (done for numerical safety) is the biggest single allocation.</p>
         </div>
 
         <div>
@@ -284,11 +286,13 @@
             <h3 style="color: var(--red);">The Physics of the Crash</h3>
             <p style="font-size: 13.5px;">For <span class="mono k-c">N = 8,192</span> tokens and <span class="mono k-c">H = 32</span> heads:</p>
             <div class="callout red" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-              Scores: 1 × 32 × 8192 × 8192 × 4 bytes = 8.58 GB<br>
-              Probs:  1 × 32 × 8192 × 8192 × 4 bytes = 8.58 GB<br>
-              Total Intermediate VRAM Overhead = 17.16 GB!
+              scores (BF16):  32 × 8192² × 2 B = 4.0 GiB<br>
+              scores + mask:  another 4.0 GiB<br>
+              softmax (FP32): 32 × 8192² × 4 B = 8.0 GiB<br>
+              cast to BF16:   another 4.0 GiB<br>
+              Transient total ≈ 20 GiB on a 22 GiB card
             </div>
-            <p style="font-size: 12.5px; color: var(--muted);">On a 24GB L4 GPU, once KV cache, model weights, and activations are loaded, materializing this 17GB matrix triggers an immediate crash.</p>
+            <p style="font-size: 12.5px; color: var(--muted);"><strong>Measured:</strong> 5.06 GiB peak at 4k, and <strong>OOM at 8k</strong> on the L4, before model weights or the KV cache are even counted. Even the leanest eager formulation (bool mask, BF16 softmax) needs 8.16 GiB at 8k and dies at 12k.</p>
           </div>
         </div>
       </div>
@@ -296,7 +300,7 @@
       <div class="flow">
         <div class="turn">
           <span class="badge observe">Observation</span>
-          <p>The actual inputs <em>Q</em>, <em>K</em>, <em>V</em> are tiny (64 MB total) and the final output <em>O</em> is only 2 MB. The entire 17 GB is intermediate. If we stream keys in small chunks into on-chip SRAM, compute attention there, and accumulate directly into registers, that matrix never needs to exist.</p>
+          <p>The inputs are small: for one head, <em>Q</em>, <em>K</em>, <em>V</em> are 1 MB each and the output row block <em>O</em> is 1 MB. For the whole layer (32 query heads, 8 KV heads) that's ~48 MB in and 32 MB out. The gigabytes are entirely <em>intermediate</em>. If we stream keys through on-chip SRAM and accumulate into registers, the <em>N</em> × <em>N</em> matrix never needs to exist.</p>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
@@ -458,22 +462,28 @@
               <tbody>
                 <tr class="win">
                   <td>PyTorch Native (BF16 Baseline)</td>
-                  <td>0.96 ms</td>
-                  <td>30.72 ms</td>
+                  <td>0.61 ms</td>
+                  <td>19.4 ms</td>
                   <td>1.00x (Baseline)</td>
                 </tr>
                 <tr class="loss">
                   <td>1. Our CUDA Implementation (No Split-K)</td>
-                  <td>1.37 ms</td>
-                  <td>43.77 ms</td>
-                  <td>0.70x (1.42x SLOWER!)</td>
+                  <td>1.50 ms</td>
+                  <td>48.1 ms</td>
+                  <td>0.40x (2.5x SLOWER!)</td>
+                </tr>
+                <tr>
+                  <td style="padding-left: 24px; color: var(--muted);">kernel only (inputs pre-cast &amp; pre-expanded)</td>
+                  <td style="color: var(--muted);">0.69 ms</td>
+                  <td style="color: var(--muted);">22.0 ms</td>
+                  <td style="color: var(--muted);">0.88x (1.13x slower)</td>
                 </tr>
               </tbody>
             </table>
 
             <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
               <strong>The Hardware Trap: SM Starvation</strong><br>
-              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) completely dark and idle</strong>! The active blocks must grind through 8,192 tokens sequentially (43.77 ms vs 30.72 ms over 32 tokens, 1.42x slower).
+              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) idle</strong>, and each active block must walk all 8,192 keys sequentially. Even with its inputs handed to it for free, the kernel alone is slower than PyTorch (0.69 vs 0.61 ms).
             </div>
           </div>
         </div>
@@ -482,11 +492,11 @@
           <div class="flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge observe">Observation</span>
-              <p>We fused the operations and eliminated every intermediate write, yet we're <strong>slower</strong>. The kernel isn't memory-inefficient; it's <strong>under-parallelized</strong>. Batch = 1 × 32 heads gives us only 32 blocks for 58 SMs, and each block walks 8,192 keys one after another.</p>
+              <p>Two separate problems. The kernel itself is <strong>under-parallelized</strong>: batch = 1 × 32 heads gives 32 blocks for 58 SMs. And because it takes FP32 inputs with one K/V head per query head, every step must first cast the BF16 cache and expand 8 KV heads to 32, which more than doubles the end-to-end time (0.69 → 1.50 ms).</p>
             </div>
             <div class="turn">
               <span class="badge ask">Question</span>
-              <p>In prefill we'd parallelize across query rows. But in decode <em>Q</em> is a single token. What other dimension of this problem can we split across the idle SMs?</p>
+              <p>Take the parallelism problem first. In prefill we'd split across query rows. But in decode <em>Q</em> is a single token. What other dimension of this problem can we split across the idle SMs?</p>
             </div>
           </div>
         </div>
@@ -545,7 +555,7 @@ O[k] = global_O_k / global_l;</pre>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
-          <p>With 2,048 blocks now covering all 58 SMs, the roofline predicts at least a 2x gain over our first kernel. Does the end-to-end benchmark agree?</p>
+          <p>With 2,048 blocks now covering all 58 SMs instead of 32, the kernel should be substantially faster than our first attempt. Does that show up end-to-end against PyTorch?</p>
         </div>
       </div>
     </div>
@@ -556,7 +566,7 @@ O[k] = global_O_k / global_l;</pre>
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Profiling Split-K</div>
       <h2>The Mystery of the 'Hidden Ceiling'</h2>
-      <p class="lede">Split-K with warp-level reductions saturates all 58 SMs and beats PyTorch Native by 1.49x. That's a real win, but it's short of the 2x+ the hardware should deliver.</p>
+      <p class="lede">Split-K drops the kernel's own time from 0.69 ms to 0.44 ms per token, a clear win over our first attempt. But measured end-to-end, it only <em>ties</em> PyTorch.</p>
 
       <div class="grid2">
         <div>
@@ -567,13 +577,14 @@ O[k] = global_O_k / global_l;</pre>
                 <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Status</th></tr>
               </thead>
               <tbody>
-                <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.96 ms</td><td>30.72 ms</td><td>1.00x (Baseline)</td></tr>
-                <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
-                <tr class="win"><td>2. Warp Split-K (Our Kernel)</td><td>0.64 ms</td><td>20.57 ms</td><td>1.49x FASTER</td></tr>
+                <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.61 ms</td><td>19.4 ms</td><td>1.00x (Baseline)</td></tr>
+                <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.50 ms</td><td>48.1 ms</td><td>0.40x (2.5x slower)</td></tr>
+                <tr><td>2. Split-K Decode (FP32 kernel)</td><td>0.61 ms</td><td>19.5 ms</td><td>1.00x (tie)</td></tr>
+                <tr><td style="padding-left: 24px; color: var(--muted);">kernel only (inputs pre-cast)</td><td style="color: var(--muted);">0.44 ms</td><td style="color: var(--muted);">14.1 ms</td><td style="color: var(--muted);">1.38x faster</td></tr>
               </tbody>
             </table>
             <div class="callout amber" style="margin-top: 12px; font-size: 12.5px;">
-              <strong>The Puzzle:</strong> By distributing 2,048 blocks across all 58 SMs, we fixed SM starvation and beat PyTorch. But why did we only get <strong>1.49x speedup</strong> instead of the predicted <strong>2x+</strong>?
+              <strong>The Puzzle:</strong> The kernel is <strong>1.38x faster</strong> than PyTorch when its inputs are already FP32. Measured from the model's real BF16 cache, that advantage vanishes completely. Where did 0.17 ms per token go?
             </div>
           </div>
         </div>
@@ -582,11 +593,11 @@ O[k] = global_O_k / global_l;</pre>
           <div class="flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge observe">Observation</span>
-              <p>Timing the kernel alone with CUDA events tells a different story: the GPU finishes its work in roughly <strong>0.44 ms</strong>. The remaining ~0.20 ms per token, about 30% of the total, is spent <em>outside</em> the kernel, in the framework.</p>
+              <p>The difference between the two Split-K rows is not GPU work. It is everything that happens <em>before</em> the kernel launches: our kernel takes <code>float*</code>, the model stores its KV cache in <code>BFloat16</code>, and something has to bridge that gap on every single token step.</p>
             </div>
             <div class="turn">
               <span class="badge ask">Question</span>
-              <p>Our kernel takes <code>float*</code> pointers, but LLaMA stores its KV cache in <code>BFloat16</code>. What has to happen between the model's cache and our kernel on <strong>every</strong> token step?</p>
+              <p>What exactly does PyTorch do to turn a BF16 cache slice into the FP32 contiguous tensor our kernel demands, and how much does it cost per step?</p>
             </div>
           </div>
         </div>
@@ -599,38 +610,38 @@ O[k] = global_O_k / global_l;</pre>
     <div class="wrap">
       <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
       <h2>Unmasking the 'BFloat16 Cast Tax'</h2>
-      <p class="lede">Profiling the boundary between PyTorch and our CUDA kernel uncovered a hidden memory allocation and bandwidth penalty.</p>
+      <p class="lede">Profiling the boundary between PyTorch and our CUDA kernel shows where the 0.17 ms went: a hidden allocation and conversion on every token step.</p>
 
       <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--red);">Culprit 1 · The Hidden Python Allocations</span>
+          <span class="tag" style="color: var(--red);">Culprit 1 · The Conversion Itself</span>
           <div class="callout red" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-            k = k_cache.to(torch.float32).contiguous()<br>
-            v = v_cache.to(torch.float32).contiguous()<br>
-            Tax: ~0.20 ms per token across layers!
+            k = k_cache[:, :, :n, :].to(torch.float32).contiguous()<br>
+            v = v_cache[:, :, :n, :].to(torch.float32).contiguous()<br>
+            Measured alone: 0.11 ms per token (one layer)
           </div>
-          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B stores the KV cache natively in <code>BFloat16</code> to save memory. Because our CUDA kernel expected <code>float*</code> (FP32), PyTorch had to allocate and convert 64 MB of tensors on every single token step!</p>
+          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B stores its KV cache in <code>BFloat16</code>. Our kernel takes <code>float*</code>, so each step reads 16.8 MB of BF16 and writes 33.5 MB of FP32 (K and V, 8 heads × 8,192 × 64) before the kernel can even start. Across 16 layers that's ~1.8 ms per generated token.</p>
         </div>
 
         <div class="card">
-          <span class="tag" style="color: var(--amber);">Culprit 2 · 2x Wasted HBM Bandwidth</span>
+          <span class="tag" style="color: var(--amber);">Culprit 2 · The Overhead Around It</span>
           <div class="callout amber" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-            Decode is 100% memory bandwidth bound.<br>
-            FP32 = 4 bytes per element.<br>
-            BF16 = 2 bytes per element (50% less data).
+            Split-K end-to-end:   0.61 ms<br>
+            Split-K kernel only:  0.44 ms<br>
+            Gap: 0.17 ms  =  0.11 ms copy + 0.06 ms alloc/launch
           </div>
-          <p style="font-size: 12.5px; color: var(--muted);">Even inside the kernel, streaming 4-byte FP32 values from global memory saturates the memory bus twice as fast as reading 2-byte 16-bit values, capping our memory throughput.</p>
+          <p style="font-size: 12.5px; color: var(--muted);">The copy is only part of it. Each step also allocates two fresh 16.8 MB tensors whose shape changes every token (the context grows by one), so the caching allocator can't simply reuse the last block, and two extra kernel launches are queued before ours.</p>
         </div>
       </div>
 
       <div class="flow">
         <div class="turn">
           <span class="badge observe">Observation</span>
-          <p>Two costs compound. First, Python allocates and converts 64 MB of tensors on every token just to satisfy our <code>float*</code> signature. Second, even once converted, the kernel is streaming twice as many bytes per key as the data actually contains. In a memory-bound phase, that's the whole game.</p>
+          <p>Nothing here is GPU arithmetic. The entire 0.17 ms is spent manufacturing a tensor whose only purpose is to match our kernel's signature. The kernel then reads 4-byte values that were 2-byte values a moment ago.</p>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
-          <p>What if the kernel accepted <code>BFloat16</code> pointers directly from VRAM and did the FP32 upcast inside registers, one value at a time? Would that remove both costs at once?</p>
+          <p>What if the kernel accepted the <code>BFloat16</code> pointers as they already sit in VRAM and did the FP32 upcast inside registers, one value at a time? Does the tax disappear, and does reading half the bytes make the kernel itself any faster?</p>
         </div>
       </div>
     </div>
@@ -651,8 +662,8 @@ O[k] = global_O_k / global_l;</pre>
 __nv_bfloat16 k_raw = K_cache[offset];
 float k_fp32 = __bfloat162float(k_raw);
 dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
-          <div class="callout green" style="font-size: 12.5px; margin-top: 8px;">
-            <strong>50% Bandwidth Reduction:</strong> Reading 2-byte BFloat16 instead of 4-byte Float32 halves memory bus traffic across all 8,192 keys!
+          <div class="callout amber" style="font-size: 12.5px; margin-top: 8px;">
+            <strong>Half the bytes, same kernel time.</strong> Kernel-only FP32: 0.44 ms. Native BF16: 0.46 ms. Reading 2-byte values instead of 4-byte did <em>not</em> speed up the kernel. The win is entirely the cast tax we no longer pay.
           </div>
         </div>
 
@@ -663,20 +674,20 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
               <tr><th>Implementation</th><th>Per Token</th><th>32 Tokens</th><th>Speedup</th></tr>
             </thead>
             <tbody>
-              <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.96 ms</td><td>30.72 ms</td><td>1.00x (Baseline)</td></tr>
-              <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
-              <tr><td>2. Warp Split-K (FP32 + Cast Tax)</td><td>0.64 ms</td><td>20.57 ms</td><td>1.49x faster</td></tr>
-              <tr class="win"><td>3. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">14.09 ms</td><td class="k">2.18x FASTER!</td></tr>
+              <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.61 ms</td><td>19.4 ms</td><td>1.00x (Baseline)</td></tr>
+              <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.50 ms</td><td>48.1 ms</td><td>0.40x (2.5x slower)</td></tr>
+              <tr><td>2. Split-K Decode (FP32 + Cast Tax)</td><td>0.61 ms</td><td>19.5 ms</td><td>1.00x (tie)</td></tr>
+              <tr class="win"><td>3. Split-K Decode (Native BF16)</td><td class="k">0.46 ms</td><td class="k">14.7 ms</td><td class="k">1.32x FASTER</td></tr>
             </tbody>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">The complete Decode progression: <strong>our first CUDA kernel is slowest</strong> due to SM starvation. <strong>Warp Split-K</strong> saturates all 58 SMs to beat PyTorch by <strong>1.49x</strong>. <strong>Native BF16</strong> eliminates the Python cast tax and cuts memory bus traffic in half, reaching a <strong>2.18x speedup</strong>!</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Same harness for every row: 32 decode steps from the model's native BF16 cache, median of 5 trials, every kernel checked against an FP32 reference first. <strong>Our first kernel</strong> loses to SM starvation plus a cast-and-expand tax. <strong>Split-K</strong> fixes the kernel but the cast tax eats the gain. <strong>Native BF16</strong> removes the tax and lands at <strong>1.32x</strong>.</p>
         </div>
       </div>
 
       <div class="flow">
         <div class="turn">
           <span class="badge observe">Observation</span>
-          <p>Removing the cast took us from 0.64 ms to 0.44 ms per token, more than the 0.20 ms the Python conversion alone cost. The extra gain is bandwidth: decode is memory-bound, so halving the bytes per key directly halves the time spent on the memory bus.</p>
+          <p>The bandwidth argument we expected to make doesn't hold: the kernel reads 16.8 MB of K/V in 0.46 ms, about <strong>37 GB/s on a 300 GB/s bus</strong>. It is nowhere near memory-bound. Our one-thread-per-key layout makes adjacent threads read addresses a full key row apart (128 B in BF16), so loads are uncoalesced and the bus sits mostly idle. That is the next 4–5x, and it belongs to a later chapter.</p>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
@@ -818,55 +829,55 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
     <div class="wrap">
       <div class="eyebrow green">Act 3 · Silicon Verification</div>
       <h2>The VRAM Cliff: Context Scaling Sweep</h2>
-      <p class="lede">Why is PyTorch faster on small prompts, but dead on long ones? We swept context length from 2,048 to 16,384 tokens on an NVIDIA L4 (24 GB VRAM).</p>
+      <p class="lede">Why is PyTorch faster on short prompts but dead on long ones? We swept context length from 2,048 to 16,384 on the L4, timing each path and reading back its <em>measured</em> peak allocation.</p>
 
       <div class="grid2">
         <div class="card" style="border-color: var(--green);">
-          <span class="tag" style="color: var(--green);">Context Scaling Benchmark (NVIDIA L4)</span>
-          <table class="bench" style="margin-top: 8px; font-size: 12.5px;">
+          <span class="tag" style="color: var(--green);">Context Scaling Benchmark (NVIDIA L4 · median of 3, peak VRAM measured)</span>
+          <table class="bench" style="margin-top: 8px; font-size: 12px;">
             <thead>
               <tr>
                 <th>Context</th>
-                <th>PyTorch (cuBLAS)</th>
-                <th>FlashAttn (Ours)</th>
-                <th>PyTorch Int. VRAM</th>
+                <th>PyTorch, model's attention code<br><span style="font-weight:400; text-transform:none; letter-spacing:0;">additive mask · FP32 softmax</span></th>
+                <th>PyTorch, leanest eager<br><span style="font-weight:400; text-transform:none; letter-spacing:0;">bool mask · BF16 softmax</span></th>
+                <th>FlashAttn BF16 (ours)</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><strong>2,048</strong></td>
-                <td>10.54 ms</td>
-                <td>19.76 ms</td>
-                <td>0.50 GB</td>
+                <td>20.0 ms · 1.27 GiB</td>
+                <td>11.9 ms · 0.53 GiB</td>
+                <td>20.3 ms · 0.01 GiB</td>
               </tr>
               <tr>
                 <td><strong>4,096</strong></td>
-                <td>39.63 ms</td>
-                <td>73.85 ms</td>
-                <td>2.00 GB</td>
+                <td>89.3 ms · 5.06 GiB</td>
+                <td>44.6 ms · 2.06 GiB</td>
+                <td>73.6 ms · 0.02 GiB</td>
               </tr>
               <tr>
                 <td><strong>8,192</strong></td>
-                <td>157.56 ms</td>
-                <td>281.83 ms</td>
-                <td>8.00 GB</td>
+                <td class="k-r">OOM</td>
+                <td>160.4 ms · 8.16 GiB</td>
+                <td>280.2 ms · 0.03 GiB</td>
               </tr>
               <tr class="loss">
                 <td><strong>12,288</strong></td>
-                <td>CRASHED (OOM)</td>
-                <td class="k">625.47 ms</td>
-                <td>18.00 GB</td>
+                <td>OOM</td>
+                <td>OOM</td>
+                <td class="k">615.6 ms · 0.05 GiB</td>
               </tr>
               <tr class="loss">
                 <td><strong>16,384</strong></td>
-                <td>CRASHED (OOM)</td>
-                <td class="k">1,104.05 ms</td>
-                <td>32.00 GB</td>
+                <td>OOM</td>
+                <td>OOM</td>
+                <td class="k">1,086.9 ms · 0.06 GiB</td>
               </tr>
             </tbody>
           </table>
           <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">
-            At 12k and 16k, PyTorch crashes with CUDA Out-of-Memory. Our FlashAttention kernel requires <strong>0 GB extra VRAM</strong> and completes cleanly.
+            The attention code our model actually runs dies at 8k. Even the leanest formulation PyTorch allows dies at 12k. Our kernel's extra VRAM is the <em>output tensor</em> and nothing else; it scales linearly in time and flat in memory.
           </p>
         </div>
 
@@ -874,21 +885,21 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
           <div class="card" style="border-top: 3px solid var(--amber);">
             <h3 style="font-size: 14px; color: var(--amber);">The Hardware Trade-off: Tensor Cores vs. CUDA Cores</h3>
             <p style="font-size: 12px; margin-top: 6px; line-height: 1.55;">
-              <strong>Why PyTorch leads at &le; 8k:</strong> PyTorch GEMM runs on 4th-Gen Tensor Cores (~242 TFLOPs BF16 on L4). Our kernel runs scalar FMA loops on standard CUDA cores (~30 TFLOPs, 8× lower compute throughput).
+              <strong>Why PyTorch leads at &le; 8k:</strong> its matmuls run on 4th-gen Tensor Cores (~121 TFLOPs dense BF16 on the L4). Our kernel runs scalar FMA loops on CUDA cores (~30 TFLOPs FP32), roughly 4x less raw compute.
             </p>
             <p style="font-size: 12px; margin-top: 6px; line-height: 1.55;">
-              <strong>The <em>O</em>(<em>N</em>²) Memory Cliff:</strong> At 16k context, PyTorch demands <strong>32 GB</strong> for intermediate attention matrices alone—exceeding total GPU memory! FlashAttention tiles directly into SRAM in <em>O</em>(1) memory.
+              <strong>The <em>O</em>(<em>N</em>²) memory cliff:</strong> every PyTorch formulation allocates at least one full <em>N</em> × <em>N</em> × 32 tensor. At 16k that is 16 GiB even in BF16, before a single weight is loaded. FlashAttention never allocates it.
             </p>
           </div>
 
           <div class="flow" style="margin-top: 10px;">
             <div class="turn">
               <span class="badge observe">Observation</span>
-              <p>At 8k, PyTorch is ~1.8x faster, but not because our algorithm is wrong. cuBLAS dispatches to Tensor Cores (242 TFLOPs); our scalar FMA loops run on CUDA cores (30 TFLOPs). Past 8k the comparison stops mattering: PyTorch needs 18–32 GB of intermediate VRAM and crashes, while our kernel needs <strong>0 GB extra</strong> and keeps scaling.</p>
+              <p>At 8k the lean PyTorch path is ~1.75x faster, but not because our algorithm is wrong: it has Tensor Cores and we have scalar FMAs. Past 8k the comparison stops mattering. PyTorch cannot run at all, while our kernel needs <strong>0 GB of intermediate VRAM</strong> and keeps scaling.</p>
             </div>
             <div class="turn">
               <span class="badge ask">Question</span>
-              <p>Step back. Prefill wanted SRAM tiling and data reuse. Decode wanted registers, Split-K, and raw memory bandwidth. Same attention formula, opposite kernel designs. Why?</p>
+              <p>Step back. Prefill wanted SRAM tiling and data reuse. Decode wanted registers and Split-K. Same attention formula, opposite kernel designs. Why?</p>
             </div>
           </div>
         </div>
@@ -953,8 +964,8 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         </div>
         <div class="card">
           <span class="tag">Chapter 3 · Decode</span>
-          <h3>Warp Flash Decode</h3>
-          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + register-level dot products + tree reduction + native BF16. 2.18x faster than native PyTorch.</p>
+          <h3>Split-K Flash Decode</h3>
+          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + one thread per key + block tree reduction + native BF16 inputs. 1.3x faster than native PyTorch at 8k context, with no cast tax.</p>
         </div>
       </div>
 
@@ -977,15 +988,15 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
       <div class="card" style="padding: 18px 22px;">
         <ol class="clean" style="gap: 12px; font-size: 14px;">
           <li><strong><em>O</em>(<em>N</em>²) Memory is a Choice, Not a Law of Physics:</strong> Intermediate attention matrices do not need to exist in VRAM. Online Softmax allows calculating the exact output in <em>O</em>(1) memory.</li>
-          <li><strong>Beware the "Cast Tax":</strong> A Python-level type conversion (<code>bfloat16</code> to <code>float32</code>) on every token step cost ~30% of our decode time and silently hid most of the kernel's real speedup.</li>
+          <li><strong>Beware the "Cast Tax":</strong> A Python-level type conversion (<code>bfloat16</code> to <code>float32</code>) on every token step cost 0.17 ms, enough to turn a kernel that was 1.38x faster than PyTorch into a tie.</li>
           <li><strong>Temporal SRAM Reuse Beats Static Limits:</strong> If <em>K</em> and <em>V</em> don't fit in shared memory at once, load <em>K</em>, compute dot products, and overwrite the same buffer with <em>V</em>.</li>
           <li><strong>Confine Warp Divergence to the Diagonal:</strong> In causal masking, every chunk except the diagonal is strictly past or strictly future. Past chunks run branchless; future chunks are never loaded.</li>
-          <li><strong>Decode Demands Parallel Vectors, Not SRAM Loops:</strong> For <em>Q</em> = 1, split along the key dimension, stream keys directly into registers, and reduce with warp shuffles.</li>
+          <li><strong>Measure the Roofline, Don't Assume It:</strong> We expected BF16 inputs to halve kernel time because "decode is memory-bound". It didn't move: 0.44 vs 0.46 ms. The kernel runs at ~37 GB/s on a 300 GB/s bus because its loads are uncoalesced. A number you haven't measured is a hypothesis.</li>
         </ol>
       </div>
 
       <div class="callout green" style="margin-top: 16px;">
-        <strong>The fundamental lesson:</strong> memory movement, not arithmetic, dictates GPU performance. Every kernel in this chapter was derived by asking where the bytes live, not by counting FLOPs. From an 8.5 GB OOM crash to 14.09 ms for 32 decode tokens, and ready for PagedAttention in Chapter 4.
+        <strong>The fundamental lesson:</strong> memory movement, not arithmetic, dictates GPU performance. Every kernel in this chapter was derived by asking where the bytes live, not by counting FLOPs. From a CUDA OOM at 8k to a prefill that runs at 16k and a decode step 1.3x faster than PyTorch, with every number reproducible from <code>benchmark_chapter3.py</code>. Next: coalesced loads, then PagedAttention in Chapter 4.
       </div>
     </div>
   </section>
