@@ -581,8 +581,8 @@ O[k] = global_O_k / global_l;</pre>
                 <tr><th>Implementation</th><th>Per Token</th><th>Total (32 tok)</th><th>Status</th></tr>
               </thead>
               <tbody>
-                <tr class="loss"><td>1. Naive CUDA (No Split-K)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
                 <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.96 ms</td><td>30.72 ms</td><td>1.00x (Baseline)</td></tr>
+                <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
                 <tr class="win"><td>2. Warp Split-K (Our Kernel)</td><td>0.64 ms</td><td>20.57 ms</td><td>1.49x FASTER</td></tr>
               </tbody>
             </table>
@@ -685,8 +685,8 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
               <tr><th>Implementation</th><th>Per Token</th><th>32 Tokens</th><th>Speedup</th></tr>
             </thead>
             <tbody>
-              <tr class="loss"><td>1. Naive CUDA (No Split-K, 32 blks)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
               <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.96 ms</td><td>30.72 ms</td><td>1.00x (Baseline)</td></tr>
+              <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.37 ms</td><td>43.77 ms</td><td>0.70x (1.42x slower)</td></tr>
               <tr><td>2. Warp Split-K (FP32 + Cast Tax)</td><td>0.64 ms</td><td>20.57 ms</td><td>1.49x faster</td></tr>
               <tr class="win"><td>3. Warp Native BF16 (__nv_bfloat16)</td><td class="k">0.44 ms</td><td class="k">14.09 ms</td><td class="k">2.18x FASTER!</td></tr>
             </tbody>
