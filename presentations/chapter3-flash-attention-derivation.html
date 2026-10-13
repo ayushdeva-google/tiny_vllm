@@ -376,7 +376,7 @@
           <div class="flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge observe">Observation</span>
-              <p>The update is asymmetric. Because we compute <em>m</em><sub>new</sub> before touching the new chunk, its exponentials are already measured against the right max. <strong>Only the past state</strong> gets multiplied by α. The only time both sides need rescaling is when merging two <em>independent</em> partial results, which we'll meet later in Split-K.</p>
+              <p>The update is asymmetric. Because we compute <em>m</em><sub>new</sub> before touching the new chunk, its exponentials are already measured against the right max. <strong>Only the past state</strong> gets multiplied by α. Keep this in mind: if we ever compute two chunks <em>independently</em> and merge them afterwards, both sides will need rescaling. That case is coming.</p>
             </div>
             <div class="turn">
               <span class="badge ask">Question</span>
@@ -467,23 +467,17 @@
                   <td>1.00x (Baseline)</td>
                 </tr>
                 <tr class="loss">
-                  <td>1. Our CUDA Implementation (No Split-K)</td>
+                  <td>Our CUDA Implementation</td>
                   <td>1.50 ms</td>
                   <td>48.1 ms</td>
                   <td>0.40x (2.5x SLOWER!)</td>
-                </tr>
-                <tr>
-                  <td style="padding-left: 24px; color: var(--muted);">kernel only (inputs pre-cast &amp; pre-expanded)</td>
-                  <td style="color: var(--muted);">0.69 ms</td>
-                  <td style="color: var(--muted);">22.0 ms</td>
-                  <td style="color: var(--muted);">0.88x (1.13x slower)</td>
                 </tr>
               </tbody>
             </table>
 
             <div class="callout red" style="margin-top: 12px; font-size: 12.5px;">
               <strong>The Hardware Trap: SM Starvation</strong><br>
-              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) idle</strong>, and each active block must walk all 8,192 keys sequentially. Even with its inputs handed to it for free, the kernel alone is slower than PyTorch (0.69 vs 0.61 ms).
+              An NVIDIA L4 has <strong>58 SMs</strong>. Launching only 32 blocks leaves <strong>26 SMs (45% of the GPU) idle</strong>, and each active block must walk all 8,192 keys one after another. Nearly half the chip never does any work.
             </div>
           </div>
         </div>
@@ -492,7 +486,7 @@
           <div class="flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge observe">Observation</span>
-              <p>Two separate problems. The kernel itself is <strong>under-parallelized</strong>: batch = 1 × 32 heads gives 32 blocks for 58 SMs. And because it takes FP32 inputs with one K/V head per query head, every step must first cast the BF16 cache and expand 8 KV heads to 32, which more than doubles the end-to-end time (0.69 → 1.50 ms).</p>
+              <p>We fused every operation and never wrote an intermediate to VRAM, yet we're 2.5x <strong>slower</strong>. Look at the launch: batch = 1 × 32 heads is only 32 blocks for 58 SMs. And look at the signature: the kernel wants FP32 with one K/V head per query head, so every step first has to convert the model's BF16 cache and expand 8 KV heads to 32 before the kernel can even start.</p>
             </div>
             <div class="turn">
               <span class="badge ask">Question</span>
@@ -561,12 +555,12 @@ O[k] = global_O_k / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 9: THE HIDDEN CEILING  -->
-  <section class="slide" data-title="The Hidden Ceiling">
+  <!-- SLIDE 9: SPLIT-K RESULTS  -->
+  <section class="slide" data-title="Split-K Results">
     <div class="wrap">
       <div class="eyebrow cyan">Act 2 · Profiling Split-K</div>
-      <h2>The Mystery of the 'Hidden Ceiling'</h2>
-      <p class="lede">Split-K drops the kernel's own time from 0.69 ms to 0.44 ms per token, a clear win over our first attempt. But measured end-to-end, it only <em>ties</em> PyTorch.</p>
+      <h2>Split-K Results: A Tie</h2>
+      <p class="lede">Split-K is 2.5x faster than our first kernel. That's the SM-starvation problem solved. But against PyTorch, we have exactly caught up and no more.</p>
 
       <div class="grid2">
         <div>
@@ -578,13 +572,12 @@ O[k] = global_O_k / global_l;</pre>
               </thead>
               <tbody>
                 <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.61 ms</td><td>19.4 ms</td><td>1.00x (Baseline)</td></tr>
-                <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.50 ms</td><td>48.1 ms</td><td>0.40x (2.5x slower)</td></tr>
-                <tr><td>2. Split-K Decode (FP32 kernel)</td><td>0.61 ms</td><td>19.5 ms</td><td>1.00x (tie)</td></tr>
-                <tr><td style="padding-left: 24px; color: var(--muted);">kernel only (inputs pre-cast)</td><td style="color: var(--muted);">0.44 ms</td><td style="color: var(--muted);">14.1 ms</td><td style="color: var(--muted);">1.38x faster</td></tr>
+                <tr class="loss"><td>1. Our CUDA Implementation</td><td>1.50 ms</td><td>48.1 ms</td><td>0.40x (2.5x slower)</td></tr>
+                <tr><td>2. Split-K Decode</td><td>0.61 ms</td><td>19.5 ms</td><td>1.00x (tie)</td></tr>
               </tbody>
             </table>
             <div class="callout amber" style="margin-top: 12px; font-size: 12.5px;">
-              <strong>The Puzzle:</strong> The kernel is <strong>1.38x faster</strong> than PyTorch when its inputs are already FP32. Measured from the model's real BF16 cache, that advantage vanishes completely. Where did 0.17 ms per token go?
+              <strong>The Puzzle:</strong> 2,048 blocks now cover every SM and the per-token time fell from 1.50 to 0.61 ms. Yet we land <strong>exactly</strong> on PyTorch's number. That is a suspicious coincidence. What is still in the way?
             </div>
           </div>
         </div>
@@ -593,11 +586,11 @@ O[k] = global_O_k / global_l;</pre>
           <div class="flow" style="margin-top: 0;">
             <div class="turn">
               <span class="badge observe">Observation</span>
-              <p>The difference between the two Split-K rows is not GPU work. It is everything that happens <em>before</em> the kernel launches: our kernel takes <code>float*</code>, the model stores its KV cache in <code>BFloat16</code>, and something has to bridge that gap on every single token step.</p>
+              <p>We fixed one of the two problems from Slide 7. The other is untouched: the kernel still takes <code>float*</code>, the model still stores its KV cache in <code>BFloat16</code>, and on every token step something has to bridge that gap before our kernel can launch. The GPU is now fast; the step around it is not.</p>
             </div>
             <div class="turn">
               <span class="badge ask">Question</span>
-              <p>What exactly does PyTorch do to turn a BF16 cache slice into the FP32 contiguous tensor our kernel demands, and how much does it cost per step?</p>
+              <p>What exactly happens between the model's BF16 cache and our kernel's <code>float*</code> argument on every step, and why would it cost as much as the kernel itself?</p>
             </div>
           </div>
         </div>
@@ -605,89 +598,89 @@ O[k] = global_O_k / global_l;</pre>
     </div>
   </section>
 
-  <!-- SLIDE 10: THE BFLOAT16 CAST TAX  -->
-  <section class="slide" data-title="The Cast Tax">
+  <!-- SLIDE 10: WHY ONLY A TIE (READING THE CALL SITE)  -->
+  <section class="slide" data-title="Why Only a Tie?">
     <div class="wrap">
-      <div class="eyebrow amber">Act 2 · The Culprit Unmasked</div>
-      <h2>Unmasking the 'BFloat16 Cast Tax'</h2>
-      <p class="lede">Profiling the boundary between PyTorch and our CUDA kernel shows where the 0.17 ms went: a hidden allocation and conversion on every token step.</p>
+      <div class="eyebrow amber">Act 2 · Reading the Call Site</div>
+      <h2>The Reason: We're Paying a Conversion on Every Step</h2>
+      <p class="lede">Look at how the kernel is called from the model, not at the kernel itself. The problem is in the two lines <em>before</em> the launch.</p>
 
       <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--red);">Culprit 1 · The Conversion Itself</span>
-          <div class="callout red" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-            k = k_cache[:, :, :n, :].to(torch.float32).contiguous()<br>
-            v = v_cache[:, :, :n, :].to(torch.float32).contiguous()<br>
-            Measured alone: 0.11 ms per token (one layer)
-          </div>
-          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B stores its KV cache in <code>BFloat16</code>. Our kernel takes <code>float*</code>, so each step reads 16.8 MB of BF16 and writes 33.5 MB of FP32 (K and V, 8 heads × 8,192 × 64) before the kernel can even start. Across 16 layers that's ~1.8 ms per generated token.</p>
+          <span class="tag" style="color: var(--red);">The Call Site</span>
+          <pre class="code" style="margin-top: 8px;"><span class="cm"># Inside every attention layer, every decode step:</span>
+<span class="err">k = k_cache[:, :, :n, :].to(torch.float32).contiguous()</span>
+<span class="err">v = v_cache[:, :, :n, :].to(torch.float32).contiguous()</span>
+out = splitk_decode(q.float(), k, v, n)   <span class="cm"># our kernel</span></pre>
+          <p style="font-size: 12.5px; color: var(--muted);">LLaMA-3.2-1B stores its KV cache in <code>BFloat16</code>. Our kernel's signature is <code>const float*</code>. The only way to connect them is to manufacture an FP32 copy, and the model has to do it again on the next token because the slice has grown by one.</p>
         </div>
 
         <div class="card">
-          <span class="tag" style="color: var(--amber);">Culprit 2 · The Overhead Around It</span>
+          <span class="tag" style="color: var(--amber);">What Those Two Lines Cost</span>
           <div class="callout amber" style="margin: 8px 0; font-family: var(--mono); font-size: 12px;">
-            Split-K end-to-end:   0.61 ms<br>
-            Split-K kernel only:  0.44 ms<br>
-            Gap: 0.17 ms  =  0.11 ms copy + 0.06 ms alloc/launch
+            K: 8 heads × 8,192 × 64 × 4 B = 16.8 MB written<br>
+            V: 8 heads × 8,192 × 64 × 4 B = 16.8 MB written<br>
+            Per layer, per token: 16.8 MB read, 33.5 MB allocated + written<br>
+            × 16 layers = ~0.5 GB of traffic per generated token
           </div>
-          <p style="font-size: 12.5px; color: var(--muted);">The copy is only part of it. Each step also allocates two fresh 16.8 MB tensors whose shape changes every token (the context grows by one), so the caching allocator can't simply reuse the last block, and two extra kernel launches are queued before ours.</p>
+          <p style="font-size: 12.5px; color: var(--muted);">Two fresh allocations whose shape changes every step, two extra kernel launches, and twice as many bytes written as the cache actually holds, all before the attention kernel is even queued. None of it is attention. It exists only to satisfy a type signature.</p>
         </div>
       </div>
 
       <div class="flow">
         <div class="turn">
           <span class="badge observe">Observation</span>
-          <p>Nothing here is GPU arithmetic. The entire 0.17 ms is spent manufacturing a tensor whose only purpose is to match our kernel's signature. The kernel then reads 4-byte values that were 2-byte values a moment ago.</p>
+          <p>The kernel reads 4-byte values that were 2-byte values a moment ago. We are not converting because the math needs FP32 inputs in memory; we are converting because we wrote <code>float*</code> in the function signature.</p>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
-          <p>What if the kernel accepted the <code>BFloat16</code> pointers as they already sit in VRAM and did the FP32 upcast inside registers, one value at a time? Does the tax disappear, and does reading half the bytes make the kernel itself any faster?</p>
+          <p>What if the kernel accepted the <code>BFloat16</code> pointers exactly as they sit in VRAM and did the FP32 upcast inside registers, one value at a time? The arithmetic stays FP32; only the <em>loads</em> change. Does the conversion step disappear entirely?</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 11: ELIMINATING THE CAST TAX (NATIVE BFLOAT16)  -->
+  <!-- SLIDE 11: THE FIX: NATIVE BFLOAT16 INPUTS  -->
   <section class="slide" data-title="Native BFloat16">
     <div class="wrap">
       <div class="eyebrow green">Act 2 · Production Integration</div>
-      <h2>Killing the Tax: Native __nv_bfloat16</h2>
-      <p class="lede">Isolating raw kernel latency isn't enough for production. We rewrote the kernel to accept native BFloat16 pointers directly from VRAM, converting on-the-fly inside thread registers.</p>
+      <h2>The Fix: Take BFloat16 Directly</h2>
+      <p class="lede">Change the signature, not the math. The kernel now accepts <code>__nv_bfloat16*</code> straight from the model's cache and upcasts each value to FP32 inside a register as it loads it.</p>
 
       <div class="grid2">
         <div class="card">
-          <span class="tag" style="color: var(--green);">1. Hardware On-The-Fly Upcast</span>
-          <p style="font-size: 13px; margin-top: 6px;">Declare kernel with native <code class="mono">__nv_bfloat16</code>. Convert in 1 clock cycle inside registers:</p>
+          <span class="tag" style="color: var(--green);">1. On-The-Fly Upcast in Registers</span>
+          <p style="font-size: 13px; margin-top: 6px;">Declare the kernel over <code class="mono">__nv_bfloat16</code>. Convert in one instruction as each value arrives:</p>
           <pre class="code"><span class="cm">// Load 16-bit key &amp; hardware upcast to FP32:</span>
 __nv_bfloat16 k_raw = K_cache[offset];
 float k_fp32 = __bfloat162float(k_raw);
 dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
-          <div class="callout amber" style="font-size: 12.5px; margin-top: 8px;">
-            <strong>Half the bytes, same kernel time.</strong> Kernel-only FP32: 0.44 ms. Native BF16: 0.46 ms. Reading 2-byte values instead of 4-byte did <em>not</em> speed up the kernel. The win is entirely the cast tax we no longer pay.
+          <div class="callout green" style="font-size: 12.5px; margin-top: 8px;">
+            <strong>Zero conversions in Python.</strong> The two red lines from the previous slide are deleted. The model hands the kernel its cache exactly as it is stored, and the accumulation stays in FP32 so numerics are unchanged.
           </div>
         </div>
 
         <div class="card" style="border-color: var(--green);">
-          <span class="tag" style="color: var(--green);">2. Standardized Decode Progression (NVIDIA L4 · N = 8,192)</span>
+          <span class="tag" style="color: var(--green);">2. Decode Progression (NVIDIA L4 · N = 8,192)</span>
           <table class="bench" style="margin-top: 8px;">
             <thead>
               <tr><th>Implementation</th><th>Per Token</th><th>32 Tokens</th><th>Speedup</th></tr>
             </thead>
             <tbody>
               <tr><td>PyTorch Native (BF16 Baseline)</td><td>0.61 ms</td><td>19.4 ms</td><td>1.00x (Baseline)</td></tr>
-              <tr class="loss"><td>1. Our CUDA Implementation (No Split-K)</td><td>1.50 ms</td><td>48.1 ms</td><td>0.40x (2.5x slower)</td></tr>
-              <tr><td>2. Split-K Decode (FP32 + Cast Tax)</td><td>0.61 ms</td><td>19.5 ms</td><td>1.00x (tie)</td></tr>
+              <tr class="loss"><td>1. Our CUDA Implementation</td><td>1.50 ms</td><td>48.1 ms</td><td>0.40x (2.5x slower)</td></tr>
+              <tr><td>2. Split-K Decode (FP32)</td><td>0.61 ms</td><td>19.5 ms</td><td>1.00x (tie)</td></tr>
               <tr class="win"><td>3. Split-K Decode (Native BF16)</td><td class="k">0.46 ms</td><td class="k">14.7 ms</td><td class="k">1.32x FASTER</td></tr>
             </tbody>
           </table>
-          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Same harness for every row: 32 decode steps from the model's native BF16 cache, median of 5 trials, every kernel checked against an FP32 reference first. <strong>Our first kernel</strong> loses to SM starvation plus a cast-and-expand tax. <strong>Split-K</strong> fixes the kernel but the cast tax eats the gain. <strong>Native BF16</strong> removes the tax and lands at <strong>1.32x</strong>.</p>
+          <p style="font-size: 12px; color: var(--muted); margin-top: 10px;">Same harness for every row: 32 decode steps from the model's native BF16 cache, median of 5 trials, every kernel checked against an FP32 reference before timing. Three steps, each motivated by the previous result: more blocks, then no conversion.</p>
         </div>
       </div>
 
       <div class="flow">
         <div class="turn">
           <span class="badge observe">Observation</span>
-          <p>The bandwidth argument we expected to make doesn't hold: the kernel reads 16.8 MB of K/V in 0.46 ms, about <strong>37 GB/s on a 300 GB/s bus</strong>. It is nowhere near memory-bound. Our one-thread-per-key layout makes adjacent threads read addresses a full key row apart (128 B in BF16), so loads are uncoalesced and the bus sits mostly idle. That is the next 4–5x, and it belongs to a later chapter.</p>
+          <p>Deleting two lines of Python bought 0.15 ms per token. Now ask what the kernel is doing with the memory bus: it reads 16.8 MB of K/V in 0.46 ms, about <strong>37 GB/s on a 300 GB/s bus</strong>. Decode is supposed to be memory-bound, and this kernel isn't close. With one thread per key, adjacent threads read addresses a full key row apart (128 B), so the loads are uncoalesced. That is the next 4–5x, and it belongs to a later chapter.</p>
         </div>
         <div class="turn">
           <span class="badge ask">Question</span>
@@ -965,7 +958,7 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
         <div class="card">
           <span class="tag">Chapter 3 · Decode</span>
           <h3>Split-K Flash Decode</h3>
-          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + one thread per key + block tree reduction + native BF16 inputs. 1.3x faster than native PyTorch at 8k context, with no cast tax.</p>
+          <p style="font-size: 13px; color: var(--muted);">Split-K sequence partitioning + one thread per key + block tree reduction, reading the model's BF16 cache directly. 1.3x faster than native PyTorch at 8k context.</p>
         </div>
       </div>
 
@@ -988,10 +981,10 @@ dot += q_reg[k] * k_fp32; <span class="cm">// FP32 register math</span></pre>
       <div class="card" style="padding: 18px 22px;">
         <ol class="clean" style="gap: 12px; font-size: 14px;">
           <li><strong><em>O</em>(<em>N</em>²) Memory is a Choice, Not a Law of Physics:</strong> Intermediate attention matrices do not need to exist in VRAM. Online Softmax allows calculating the exact output in <em>O</em>(1) memory.</li>
-          <li><strong>Beware the "Cast Tax":</strong> A Python-level type conversion (<code>bfloat16</code> to <code>float32</code>) on every token step cost 0.17 ms, enough to turn a kernel that was 1.38x faster than PyTorch into a tie.</li>
+          <li><strong>Read the Call Site, Not Just the Kernel:</strong> Two lines of Python that converted the BF16 cache to FP32 on every token cost as much as the Split-K speedup itself. Deleting them took decode from a tie with PyTorch to 1.3x faster. A kernel's signature is part of its performance.</li>
           <li><strong>Temporal SRAM Reuse Beats Static Limits:</strong> If <em>K</em> and <em>V</em> don't fit in shared memory at once, load <em>K</em>, compute dot products, and overwrite the same buffer with <em>V</em>.</li>
           <li><strong>Confine Warp Divergence to the Diagonal:</strong> In causal masking, every chunk except the diagonal is strictly past or strictly future. Past chunks run branchless; future chunks are never loaded.</li>
-          <li><strong>Measure the Roofline, Don't Assume It:</strong> We expected BF16 inputs to halve kernel time because "decode is memory-bound". It didn't move: 0.44 vs 0.46 ms. The kernel runs at ~37 GB/s on a 300 GB/s bus because its loads are uncoalesced. A number you haven't measured is a hypothesis.</li>
+          <li><strong>Check Your Roofline Before Claiming It:</strong> "Decode is memory-bound" is a statement about the problem, not about your kernel. Ours moves 16.8 MB in 0.46 ms, about 37 GB/s on a 300 GB/s bus, because one-thread-per-key loads are uncoalesced. The bus is mostly idle, and that gap is where the next speedup lives.</li>
         </ol>
       </div>
 
