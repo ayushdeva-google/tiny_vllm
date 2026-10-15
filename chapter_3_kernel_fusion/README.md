@@ -1,4 +1,45 @@
-# Chapter 3: Introduction to Kernel Fusion (Triton)
+# Chapter 3: Kernel Fusion — RMSNorm (Triton/CUDA) and FlashAttention (CUDA)
+
+This chapter has two parts. Part A (below) fuses `RMSNorm`. Part B derives
+FlashAttention from Online Softmax and is presented in
+`presentations/chapter3-flash-attention-derivation.html`.
+
+## Part B · FlashAttention: reproducing every number in the deck
+
+```bash
+PATH=.venv/bin:$PATH .venv/bin/python chapter_3_kernel_fusion/benchmark_chapter3.py
+```
+
+That single script is the source of truth for the slides. It:
+
+1. **Checks correctness first.** Each kernel is compared against a PyTorch FP32
+   reference (decode at 8,192 and at a ragged 8,199; prefill at 2k/4k/8k).
+   A kernel that fails is flagged and its timings marked untrusted.
+2. **Uses one decode setup.** Every row starts from the same native BF16 KV
+   cache, exactly as LLaMA-3.2-1B stores it. Any cast or GQA head expansion a
+   kernel needs is inside the timed region.
+3. **Times every row the same way.** Full warm-up pass, then median of 5
+   trials of 32 decode steps (context 8,192 → 8,223). `REVERSE_ORDER=1`
+   runs the rows back-to-front to check for order effects.
+4. **Measures prefill peak VRAM** via `torch.cuda.max_memory_allocated()`
+   rather than computing it, for both the model's attention code path and the
+   leanest eager PyTorch formulation.
+
+Results are written to `results/chapter3_results.json`.
+
+| Directory | Kernel | Slide |
+|---|---|---|
+| `cuda_flash_decode/` | First decode kernel: 1 block per head, no Split-K, FP32 | 7 |
+| `cuda_warp_decode/` | Split-K decode, 1 thread per key, block tree reduction, FP32 | 8–10 |
+| `cuda_bf16_flash_attention/` | Same Split-K decode taking native BF16, plus the tiled prefill kernel | 11–15 |
+
+> The Split-K kernels originally had a shared-memory race (block max read, then
+> buffer overwritten with no barrier). It is fixed; do not re-generate these
+> `.cu` files from any older script.
+
+---
+
+## Part A · RMSNorm fusion
 
 Welcome to Chapter 3! In this chapter, we transition from pure architecture (like the KV Cache) to **Systems Optimization**. Specifically, we tackle the "Host Launch Starvation" problem we discovered during profiling. 
 
