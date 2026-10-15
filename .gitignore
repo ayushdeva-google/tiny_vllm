@@ -28,8 +28,6 @@ env.bak/
 venv.bak/
 
 # Profiler, Traces & Large Model Outputs
-profile_micro_nsys.py
-run_profiling_suite.py
 profile_results/
 profile_export/
 tools/
