@@ -72,6 +72,8 @@ try:
         save_json_metrics,
     )
 except ImportError:
+    import sys
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from chapter_2_kvcache.profile_visualizer import (
         extract_single_token_metric,
         extract_timeline_from_trace,
@@ -817,11 +819,13 @@ def main():
         json_file = os.path.join(output_dir, "token_metrics.json")
         save_json_metrics(token_records, prompt=args.prompt, output_file=json_file, timeline_records=timeline_records)
 
-        rel_viz = os.path.relpath(os.path.join(script_dir, "profile_visualizer.py"), os.getcwd())
+        repo_root = os.path.dirname(script_dir)
+        rel_viz = os.path.relpath(os.path.join(repo_root, "chapter_2_kvcache", "profile_visualizer.py"), os.getcwd())
+        rel_out = os.path.relpath(os.path.join(output_dir, "flash_decode_dashboard.html"), os.getcwd())
         rel_json = os.path.relpath(json_file, os.getcwd())
         print(f"\n[✓] Profiling complete. Metrics saved to: {os.path.abspath(json_file)}")
         print(f"[*] To generate the HTML dashboard, run:")
-        print(f"    python {rel_viz} --json {rel_json}")
+        print(f"    python {rel_viz} --json {rel_json} --output {rel_out}")
 
 
 if __name__ == "__main__":
