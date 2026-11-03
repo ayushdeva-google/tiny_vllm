@@ -50,6 +50,19 @@ To ensure every learning session and experiment is isolated and reproducible, th
   - [profile_visualizer.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_2_kvcache/profile_visualizer.py): Standalone HTML dashboard generator and Gantt timeline analyzer.
   - [profile_results/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_2_kvcache/profile_results): Generated profiling sessions, Chrome traces, and interactive HTML dashboard.
 
+### [Chapter 3: Kernel Fusion & FlashAttention](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion)
+
+**Focus**: Eliminating host launch starvation and VRAM roundtrips with custom Triton and CUDA C++ kernels for `RMSNorm` and `FlashAttention`.
+- **Key Concepts Explored**:
+  - **Part A — RMSNorm Fusion**: Fusing multi-kernel PyTorch eager operations into single-pass Triton (`triton_rmsnorm.py`) and raw CUDA warp-shuffle (`cuda_rmsnorm/`) kernels.
+  - **Part B — FlashAttention from First Principles**: Deriving Online Softmax, Split-K Flash Decode (`cuda_flash_decode/`, `cuda_warp_decode/`), and native BFloat16 Split-K decode + tiled causal prefill (`cuda_bf16_flash_attention/`).
+  - Single-source correctness and latency/VRAM verification (`benchmark_chapter3.py`).
+- **Directory Contents** (`chapter_3_kernel_fusion/`):
+  - [benchmark_chapter3.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/benchmark_chapter3.py): Unified correctness, decode latency, and prefill VRAM benchmark for all Chapter 3 attention kernels.
+  - [cuda_rmsnorm/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_rmsnorm) & [triton_rmsnorm.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/triton_rmsnorm.py): Custom CUDA and Triton `RMSNorm` kernels.
+  - [cuda_flash_decode/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_flash_decode), [cuda_warp_decode/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_warp_decode), [cuda_bf16_flash_attention/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_bf16_flash_attention): Progressive CUDA attention implementations.
+  - [llama_inference_with_profiling.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/llama_inference_with_profiling.py) & [profile_visualizer.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/profile_visualizer.py): End-to-end model profiling with fused `RMSNorm` and speedup dashboard generator.
+
 ---
 
 ## Quickstart & Setup
@@ -131,9 +144,17 @@ python chapter_1/eval_quality.py
 
 ---
 
-## Deep-Dive Documentation
+## Deep-Dive Documentation & Presentations
+
+Interactive visual decks in `presentations/`:
+- [CUDA 101 Interactive Deck](file:///home/ayushdeva_google_com/tiny_vllm/presentations/cuda-101.html)
+- [Chapter 2: KV Cache Dashboard](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter2-kvcache-dashboard-v3.html)
+- [Chapter 3: RMSNorm Speedup Dashboard](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter3-rmsnorm-speedup-dashboard.html)
+- [Chapter 3: FlashAttention Derivation](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter3-flash-attention-derivation.html)
 
 For detailed analysis of GPU execution mechanics and memory systems, see the guides in `docs/`:
+- [CUDA 101 Guide](file:///home/ayushdeva_google_com/tiny_vllm/docs/CUDA_101.md)
+- [Quantization 101 Guide](file:///home/ayushdeva_google_com/tiny_vllm/docs/QUANTIZATION_101.md)
 - [Unoptimized Attention Breakdown & Memory Physics](file:///home/ayushdeva_google_com/tiny_vllm/docs/unoptimized_attention_breakdown.md)
 - [GPU Memory Wait & Scheduling FAQ](file:///home/ayushdeva_google_com/tiny_vllm/docs/GPU_MEMORY_WAIT_AND_SCHEDULING_FAQ.md)
 - [Inference Architecture & Hardware Interplay](file:///home/ayushdeva_google_com/tiny_vllm/docs/INFERENCE_ARCHITECTURE_AND_HARDWARE_INTERPLAY.md)

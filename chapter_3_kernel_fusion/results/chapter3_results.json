@@ -1,0 +1,209 @@
+{
+  "hardware": {
+    "gpu": "NVIDIA L4",
+    "sm_count": 58,
+    "vram_total_gib": 22.03,
+    "torch": "2.5.1+cu121",
+    "python": "3.10.12"
+  },
+  "config": {
+    "B": 1,
+    "H_q": 32,
+    "H_kv": 8,
+    "d": 64,
+    "decode_context": 8192,
+    "decode_tokens": 32,
+    "decode_trials": 5,
+    "prefill_lengths": [
+      2048,
+      4096,
+      8192,
+      12288,
+      16384
+    ]
+  },
+  "correctness": {
+    "decode_naive_fp32_N8192": {
+      "pass": true,
+      "max_abs_err": 6.705522537231445e-08
+    },
+    "decode_splitk_fp32_N8192": {
+      "pass": true,
+      "max_abs_err": 1.043081283569336e-07
+    },
+    "decode_splitk_bf16_N8192": {
+      "pass": true,
+      "max_abs_err": 0.00023214519023895264
+    },
+    "decode_naive_fp32_N8199": {
+      "pass": true,
+      "max_abs_err": 6.146728992462158e-08
+    },
+    "decode_splitk_fp32_N8199": {
+      "pass": true,
+      "max_abs_err": 6.332993507385254e-08
+    },
+    "decode_splitk_bf16_N8199": {
+      "pass": true,
+      "max_abs_err": 0.00023070722818374634
+    },
+    "prefill_bf16_N2048": {
+      "pass": true,
+      "max_abs_err": 0.007341623306274414
+    },
+    "prefill_bf16_N4096": {
+      "pass": true,
+      "max_abs_err": 0.007784128189086914
+    },
+    "prefill_bf16_N8192": {
+      "pass": true,
+      "max_abs_err": 0.007674217224121094
+    }
+  },
+  "decode": {
+    "PyTorch Native (BF16 baseline)": {
+      "total_ms_32_tokens": 19.38,
+      "per_token_ms": 0.606,
+      "speedup_vs_pytorch": 1.0,
+      "passed_correctness": true
+    },
+    "1. Our CUDA Implementation (no Split-K)": {
+      "total_ms_32_tokens": 48.12,
+      "per_token_ms": 1.504,
+      "speedup_vs_pytorch": 0.4,
+      "passed_correctness": true
+    },
+    "Our CUDA Impl. (kernel only, pre-cast+expanded)": {
+      "total_ms_32_tokens": 21.9,
+      "per_token_ms": 0.684,
+      "speedup_vs_pytorch": 0.88,
+      "passed_correctness": true
+    },
+    "2. Split-K Decode (FP32 + cast tax)": {
+      "total_ms_32_tokens": 19.54,
+      "per_token_ms": 0.611,
+      "speedup_vs_pytorch": 0.99,
+      "passed_correctness": true
+    },
+    "Split-K Decode (FP32, kernel only, pre-cast)": {
+      "total_ms_32_tokens": 14.07,
+      "per_token_ms": 0.44,
+      "speedup_vs_pytorch": 1.38,
+      "passed_correctness": true
+    },
+    "BF16 -> FP32 cast of K,V only (no kernel)": {
+      "total_ms_32_tokens": 3.72,
+      "per_token_ms": 0.116,
+      "speedup_vs_pytorch": 5.21,
+      "passed_correctness": true
+    },
+    "3. Split-K Decode (native BF16)": {
+      "total_ms_32_tokens": 14.56,
+      "per_token_ms": 0.455,
+      "speedup_vs_pytorch": 1.33,
+      "passed_correctness": true
+    }
+  },
+  "prefill": [
+    {
+      "context": 2048,
+      "pytorch_model_path": {
+        "status": "ok",
+        "ms": 20.0,
+        "peak_extra_gib": 1.27
+      },
+      "pytorch_lean": {
+        "status": "ok",
+        "ms": 11.94,
+        "peak_extra_gib": 0.53
+      },
+      "flash_attn_bf16": {
+        "status": "ok",
+        "ms": 19.76,
+        "peak_extra_gib": 0.01
+      },
+      "theoretical_scores_tensor_gib_bf16": 0.25,
+      "theoretical_scores_tensor_gib_fp32": 0.5
+    },
+    {
+      "context": 4096,
+      "pytorch_model_path": {
+        "status": "ok",
+        "ms": 89.3,
+        "peak_extra_gib": 5.06
+      },
+      "pytorch_lean": {
+        "status": "ok",
+        "ms": 44.86,
+        "peak_extra_gib": 2.06
+      },
+      "flash_attn_bf16": {
+        "status": "ok",
+        "ms": 74.09,
+        "peak_extra_gib": 0.02
+      },
+      "theoretical_scores_tensor_gib_bf16": 1.0,
+      "theoretical_scores_tensor_gib_fp32": 2.0
+    },
+    {
+      "context": 8192,
+      "pytorch_model_path": {
+        "status": "OOM",
+        "ms": null,
+        "peak_extra_gib": null
+      },
+      "pytorch_lean": {
+        "status": "ok",
+        "ms": 159.97,
+        "peak_extra_gib": 8.16
+      },
+      "flash_attn_bf16": {
+        "status": "ok",
+        "ms": 281.81,
+        "peak_extra_gib": 0.03
+      },
+      "theoretical_scores_tensor_gib_bf16": 4.0,
+      "theoretical_scores_tensor_gib_fp32": 8.0
+    },
+    {
+      "context": 12288,
+      "pytorch_model_path": {
+        "status": "OOM",
+        "ms": null,
+        "peak_extra_gib": null
+      },
+      "pytorch_lean": {
+        "status": "OOM",
+        "ms": null,
+        "peak_extra_gib": null
+      },
+      "flash_attn_bf16": {
+        "status": "ok",
+        "ms": 619.5,
+        "peak_extra_gib": 0.05
+      },
+      "theoretical_scores_tensor_gib_bf16": 9.0,
+      "theoretical_scores_tensor_gib_fp32": 18.0
+    },
+    {
+      "context": 16384,
+      "pytorch_model_path": {
+        "status": "OOM",
+        "ms": null,
+        "peak_extra_gib": null
+      },
+      "pytorch_lean": {
+        "status": "OOM",
+        "ms": null,
+        "peak_extra_gib": null
+      },
+      "flash_attn_bf16": {
+        "status": "ok",
+        "ms": 1091.35,
+        "peak_extra_gib": 0.06
+      },
+      "theoretical_scores_tensor_gib_bf16": 16.0,
+      "theoretical_scores_tensor_gib_fp32": 32.0
+    }
+  ]
+}
