@@ -63,6 +63,22 @@ To ensure every learning session and experiment is isolated and reproducible, th
   - [cuda_flash_decode/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_flash_decode), [cuda_warp_decode/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_warp_decode), [cuda_bf16_flash_attention/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/cuda_bf16_flash_attention): Progressive CUDA attention implementations.
   - [llama_inference_with_profiling.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/llama_inference_with_profiling.py) & [profile_visualizer.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_3_kernel_fusion/profile_visualizer.py): End-to-end model profiling with fused `RMSNorm` and speedup dashboard generator.
 
+### [Chapter 5: Batch Inference — Evaluation, Static Batching & Continuous Batching](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference)
+
+**Focus**: Online/offline serving evaluation, queueing physics ($\lambda, \beta$ Gamma/Poisson arrivals), and progressive batching schedulers in pure PyTorch (`bfloat16` + KV cache).
+- **Key Concepts Explored**:
+  - Open-loop arrival simulation ($\Delta t \sim \text{Gamma}(\beta, \frac{1}{\lambda\beta})$) across real ShareGPT conversations (`data/sharegpt_200.json`) and synthetic WikiText-2 length distributions.
+  - **Stage 0 — Sequential FCFS (`B=1`)**: Head-of-Line (HoL) queueing blowup (`~0.34 req/s` saturation ceiling on L4) and HBM weight-streaming bottleneck (`39.3 tok/s`).
+  - **Stage 1 — Static (Request-Level) Padded Batching**: Left-padded batched prefill with per-sequence RoPE `position_ids` + lockstep decode; quantifies prefill padding waste (`~64–75%`) and zombie decode slot waste (`~39–47%`) on skewed prompts.
+  - **Stage 2 — Continuous (Iteration-Level + Selective) Batching**: Orca-style per-iteration KV slot recycling + ragged unpadded token packing (`300.9 tok/s` / `7.65x` burst throughput, `140x` lower median TTFT at busy online QPS with `0%` padding/zombie waste).
+- **Directory Contents** (`chapter_5_batch_inference/`):
+  - [llama_model.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/llama_model.py) & [engines.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/engines.py): Standalone `B=1` Sequential FCFS baseline engine.
+  - [static_batching.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/static_batching.py): Standalone Static Padded Batching model, KV cache, and scheduler.
+  - [continuous_batching.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/continuous_batching.py): Standalone Continuous Batching model, `SlotKVCache`, `SelectiveAttention`, and iteration-level scheduler.
+  - [workloads.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/workloads.py) & [profiler_metrics.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/profiler_metrics.py): Arrival schedule generator, serving percentile/goodput aggregator, and `torch.profiler` trace analyzer.
+  - [benchmark_serving.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/benchmark_serving.py) & [benchmark_batch_comparison.py](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/benchmark_batch_comparison.py): Single-engine and multi-engine $(\lambda, \beta)$ benchmark + FP32 parity verification runners.
+  - [results/](file:///home/ayushdeva_google_com/tiny_vllm/chapter_5_batch_inference/results): Saved JSON benchmark results (`batch_comparison_sharegpt.json`, `sequential_fcfs_b1_sharegpt_sweep.json`, etc.).
+
 ---
 
 ## Quickstart & Setup
@@ -151,6 +167,8 @@ Interactive visual decks in `presentations/`:
 - [Chapter 2: KV Cache Dashboard](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter2-kvcache-dashboard-v3.html)
 - [Chapter 3: RMSNorm Speedup Dashboard](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter3-rmsnorm-speedup-dashboard.html)
 - [Chapter 3: FlashAttention Derivation](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter3-flash-attention-derivation.html)
+- [Chapter 5: Request Arrival & Queueing Eval Explorer](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter5-request-arrival-explorer.html)
+- [Chapter 5: Static vs. Continuous Batching Benchmark Dashboard](file:///home/ayushdeva_google_com/tiny_vllm/presentations/chapter5-batch-comparison-dashboard.html)
 
 For detailed analysis of GPU execution mechanics and memory systems, see the guides in `docs/`:
 - [CUDA 101 Guide](file:///home/ayushdeva_google_com/tiny_vllm/docs/CUDA_101.md)

@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 5 · Request Arrival & Batch Inference Eval Explorer</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #0b0f19;
+      --foreground: #f8fafc;
+      --card: #111827;
+      --card-foreground: #f8fafc;
+      --primary: #3b82f6;
+      --primary-foreground: #ffffff;
+      --secondary: #1e293b;
+      --secondary-foreground: #e2e8f0;
+      --muted: #1e293b;
+      --muted-foreground: #94a3b8;
+      --border: #1e293b;
+    }
+    html.light {
+      --background: #f8fafc;
+      --foreground: #0f172a;
+      --card: #ffffff;
+      --card-foreground: #0f172a;
+      --primary: #2563eb;
+      --primary-foreground: #ffffff;
+      --secondary: #f1f5f9;
+      --secondary-foreground: #0f172a;
+      --muted: #f1f5f9;
+      --muted-foreground: #64748b;
+      --border: #e2e8f0;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-5 md:p-6 space-y-5">
+
+  <!-- Header -->
+  <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+          Chapter 5 · Batch Inference Evaluation &amp; Queueing Physics
+        </div>
+        <h1 class="text-xl font-bold mt-1">
+          Incoming Request Stream (100ms Bins), Query Archetypes &amp; Queueing Impact
+        </h1>
+        <p class="text-sm text-[var(--muted-foreground)] mt-1">
+          Explore how requests arrive every <code class="px-1.5 py-0.5 rounded bg-[var(--secondary)] text-xs">100ms</code> under a Poisson process, how query nature drives input vs. output tokens, and why <code class="px-1.5 py-0.5 rounded bg-[var(--secondary)] text-xs">B=1</code> sequential serving hits a queueing wall on the NVIDIA L4.
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button id="tab-btn-stream" onclick="switchTab('stream')" class="px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition">
+          1. Live Arrival &amp; Queue Timeline
+        </button>
+        <button id="tab-btn-matrix" onclick="switchTab('matrix')" class="px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--border)] transition">
+          2. Eval Setup &amp; Experiment Matrix
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 1: LIVE ARRIVAL & QUEUE TIMELINE -->
+  <div id="tab-stream" class="space-y-5">
+
+    <!-- Interactive Control Panel -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+
+        <!-- Control 1: Workload Nature -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] mb-1.5">
+            Workload (Query Nature)
+          </label>
+          <select id="ctrl-workload" onchange="renderAll()" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-3 py-2 text-sm">
+            <option value="sharegpt" selected>sharegpt (Real User Prompts, High Skew)</option>
+            <option value="synthetic-skewed">synthetic-skewed (75% Chat + 25% Long RAG)</option>
+            <option value="synthetic-uniform">synthetic-uniform (Tight ~128 in / ~64 out)</option>
+            <option value="synthetic-prefill-heavy">synthetic-prefill-heavy (512-1024 in / 16-32 out)</option>
+            <option value="synthetic-decode-heavy">synthetic-decode-heavy (32-64 in / 128-256 out)</option>
+          </select>
+        </div>
+
+        <!-- Control 2: Poisson Arrival Frequency (QPS) -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] mb-1.5">
+            Poisson Arrival Rate λ (QPS)
+          </label>
+          <select id="ctrl-qps" onchange="renderAll()" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-3 py-2 text-sm">
+            <option value="0.15">0.15 req/s — Light Load (1 req / 6.7s)</option>
+            <option value="0.35">0.35 req/s — B=1 Saturation Knee (1 req / 2.9s)</option>
+            <option value="0.60">0.60 req/s — Overloaded for B=1 (1 req / 1.7s)</option>
+            <option value="1.00">1.00 req/s — Moderate Batch Regime (1 req / 1.0s)</option>
+            <option value="2.50" selected>2.50 req/s — Busy Online Traffic (1 req / 400ms)</option>
+            <option value="5.00">5.00 req/s — Heavy Traffic (0.5 req / 100ms)</option>
+            <option value="10.00">10.0 req/s — High Batch Regime (1.0 req / 100ms)</option>
+            <option value="inf">inf (Burst) — Offline All-at-t=0s</option>
+          </select>
+        </div>
+
+        <!-- Control 3: Bin Size & Time Window -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] mb-1.5">
+            Time Bin &amp; Zoom Window
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <select id="ctrl-bin" onchange="renderAll()" class="rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-2 text-sm">
+              <option value="0.1" selected>100 ms bins</option>
+              <option value="0.25">250 ms bins</option>
+              <option value="0.5">500 ms bins</option>
+              <option value="1.0">1000 ms bins</option>
+            </select>
+            <select id="ctrl-zoom" onchange="renderAll()" class="rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-2 text-sm">
+              <option value="5">First 5 sec</option>
+              <option value="12" selected>First 12 sec</option>
+              <option value="30">First 30 sec</option>
+              <option value="all">Full Span</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Control 4: Burstiness & Output Cap -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] mb-1.5">
+            Arrival Shape &amp; Output Cap
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <select id="ctrl-burst" onchange="renderAll()" class="rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-2 text-sm">
+              <option value="1.0" selected>Poisson (β=1)</option>
+              <option value="0.35">Bursty (β=0.35)</option>
+              <option value="8.0">Periodic (β=8)</option>
+            </select>
+            <select id="ctrl-cap" onchange="renderAll()" class="rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-2 text-sm">
+              <option value="0" selected>Natural Out Len</option>
+              <option value="128">Cap ≤ 128 tok</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Live Poisson 100ms Strip KPIs -->
+      <div id="kpi-strip" class="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2 border-t border-[var(--border)]"></div>
+    </div>
+
+    <!-- Chart 1: 100ms Arrival Histogram + Input/Output Token Stems -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div>
+          <h2 class="text-base font-semibold">
+            A. Time-Axis Request Arrivals (Count per Bin &amp; Token Nature per Request)
+          </h2>
+          <p id="arrival-subtitle" class="text-xs text-[var(--muted-foreground)] mt-0.5"></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-4 text-xs">
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#f59e0b"></span>Arrivals in Bin</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#3b82f6"></span>Input Prompt Tokens (↑)</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#10b981"></span>Expected Output Tokens (↓)</span>
+        </div>
+      </div>
+
+      <div class="w-full overflow-x-auto">
+        <canvas id="canvas-arrivals" height="310" class="w-full rounded-lg cursor-pointer"></canvas>
+      </div>
+
+      <!-- Clicked / Selected Request Inspector -->
+      <div id="req-inspector" class="rounded-lg border border-[var(--border)] bg-[var(--secondary)] p-3.5 text-sm"></div>
+    </div>
+
+    <!-- Chart 2: Query Nature Scatter & Archetype Breakdown -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div class="lg:col-span-5 bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div>
+          <h2 class="text-base font-semibold">B. Nature of Incoming Queries (In vs. Out Tokens)</h2>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">
+            Input tokens drive <strong>Prefill compute</strong>; expected output tokens drive <strong>sequential Decode hold time</strong> (~24.8 ms/tok on L4). Click any point to inspect.
+          </p>
+        </div>
+        <canvas id="canvas-scatter" height="240" class="w-full rounded-lg cursor-pointer"></canvas>
+        <div id="archetype-pills" class="flex flex-wrap gap-2 text-xs"></div>
+      </div>
+
+      <!-- Chart 3: Synchronized B=1 Queue & Gantt Waterfall -->
+      <div class="lg:col-span-7 bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 class="text-base font-semibold">C. Resulting Queue &amp; Execution Waterfall (`B=1` FCFS on L4)</h2>
+            <p class="text-xs text-[var(--muted-foreground)] mt-0.5">
+              Each row is one request (N=24): arrival dot → <span style="color:#ef4444" class="font-semibold">Queue Wait</span> → <span style="color:#3b82f6" class="font-semibold">Prefill</span> → <span style="color:#10b981" class="font-semibold">Decode</span>.
+            </p>
+          </div>
+          <div id="waterfall-summary" class="text-xs font-medium text-[var(--muted-foreground)]"></div>
+        </div>
+        <canvas id="canvas-gantt" height="265" class="w-full rounded-lg cursor-pointer"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB 2: EVAL SETUP & EXPERIMENT MATRIX -->
+  <div id="tab-matrix" class="hidden space-y-5">
+
+    <!-- 3 Experimental Axes -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
+        <div class="text-xs font-bold uppercase tracking-wider text-blue-500">Axis 1 · Incoming Arrival Process</div>
+        <h3 class="text-base font-semibold">Frequency (λ QPS) &amp; Burstiness (β)</h3>
+        <p class="text-sm text-[var(--muted-foreground)]">
+          Inter-arrival gaps follow <code class="text-xs px-1 py-0.5 rounded bg-[var(--secondary)]">Δt ~ Gamma(β, 1/(λ·β))</code> with a fixed seed (<code class="text-xs px-1 py-0.5 rounded bg-[var(--secondary)]">seed=42</code>) so every batching optimization replays the <strong>exact same arrival timestamps</strong>:
+        </p>
+        <ul class="text-xs text-[var(--muted-foreground)] space-y-1.5 pt-1 list-disc pl-4">
+          <li><strong>Low QPS (0.15 req/s)</strong>: Measures unloaded single-user TTFT &amp; TPOT latency floor.</li>
+          <li><strong>Knee QPS (0.35–1.0 req/s)</strong>: Exposes M/G/1 head-of-line queueing blowup on <code class="text-xs">B=1</code> while batched engines stay flat.</li>
+          <li><strong>High QPS (2.5–10+ req/s)</strong>: Finds the higher saturation knee of Static vs. Continuous Batching.</li>
+          <li><strong>Offline Burst (λ = ∞)</strong>: All requests arrive at <code class="text-xs">t = 0s</code>; measures pure max throughput (<code class="text-xs">tok/s</code>).</li>
+        </ul>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
+        <div class="text-xs font-bold uppercase tracking-wider text-emerald-500">Axis 2 · Request Length Nature</div>
+        <h3 class="text-base font-semibold">5 Standard Workload Distributions</h3>
+        <p class="text-sm text-[var(--muted-foreground)]">
+          Batching optimizations behave very differently depending on length variance (Coefficient of Variation, CV):
+        </p>
+        <ul class="text-xs text-[var(--muted-foreground)] space-y-1.5 pt-1 list-disc pl-4">
+          <li><strong>sharegpt</strong>: Real prompts (37–990 in, 17–382 out). Industry standard (vLLM / Orca papers).</li>
+          <li><strong>synthetic-uniform</strong>: ~128 in / ~64 out (CV ≈ 0.08). Isolates pure GEMV → GEMM speedup with zero padding waste.</li>
+          <li><strong>synthetic-skewed</strong>: 75% short chat + 25% long RAG. Exposes static-batch padding waste &amp; straggler tail wait.</li>
+          <li><strong>prefill-heavy / decode-heavy</strong>: Separates compute-bound prefill stalls (ITL spikes) from HBM-bound KV/weight streaming.</li>
+        </ul>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
+        <div class="text-xs font-bold uppercase tracking-wider text-amber-500">Axis 3 · Engine Progression</div>
+        <h3 class="text-base font-semibold">Standalone Engine Stages</h3>
+        <p class="text-sm text-[var(--muted-foreground)]">
+          Each optimization stays an independent implementation evaluated against the exact same harness &amp; SLOs (<code class="text-xs px-1 py-0.5 rounded bg-[var(--secondary)]">TTFT ≤ 2000ms</code>, <code class="text-xs px-1 py-0.5 rounded bg-[var(--secondary)]">TPOT ≤ 50ms</code>):
+        </p>
+        <ul class="text-xs text-[var(--muted-foreground)] space-y-1.5 pt-1 list-disc pl-4">
+          <li><strong>Stage 0 (Done)</strong>: <code class="text-xs">sequential_fcfs_b1</code> — 1 request at a time, pure PyTorch + static KV cache.</li>
+          <li><strong>Stage 1 (Done)</strong>: Static Padded Batching — batches up to <code class="text-xs">B</code> queued requests; waits for longest straggler in batch.</li>
+          <li><strong>Stage 2 (Done)</strong>: Continuous (Iteration-Level) Batching — retires finished requests &amp; injects waiting requests every step.</li>
+          <li><strong>Stage 3 (Next)</strong>: Chunked Prefill / PagedAttention — eliminates ITL prefill stalls &amp; KV fragmentation.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Experiment Combination Table -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+      <h2 class="text-base font-semibold">Core Experiment Combinations We Run for Every Engine</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+              <th class="py-2.5 pr-4 font-semibold">Experiment Suite</th>
+              <th class="py-2.5 pr-4 font-semibold">Workload</th>
+              <th class="py-2.5 pr-4 font-semibold">Arrival Rates Swept (λ)</th>
+              <th class="py-2.5 pr-4 font-semibold">Primary Bottleneck Tested</th>
+              <th class="py-2.5 font-semibold">Key Metrics Compared</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[var(--border)]">
+            <tr>
+              <td class="py-2.5 pr-4 font-medium">1. Real-World Serving Knee</td>
+              <td class="py-2.5 pr-4"><code>sharegpt</code> (N=20–64)</td>
+              <td class="py-2.5 pr-4"><code>0.15, 0.35, 0.6, 1.0, 2.5, 5.0, inf</code></td>
+              <td class="py-2.5 pr-4">Natural conversational skew + HoL queueing</td>
+              <td class="py-2.5">Max Goodput QPS, Queue Wait P50/P99, TTFT P99</td>
+            </tr>
+            <tr>
+              <td class="py-2.5 pr-4 font-medium">2. Pure Batch Scaling (No Padding)</td>
+              <td class="py-2.5 pr-4"><code>synthetic-uniform</code></td>
+              <td class="py-2.5 pr-4"><code>inf</code> (Burst) across B=1, 4, 8, 16, 32</td>
+              <td class="py-2.5 pr-4">2.36 GiB HBM weight-read amortization (GEMV → GEMM)</td>
+              <td class="py-2.5">Output <code>tok/s</code>, TPOT, GPU Duty Cycle %, HBM GB/s</td>
+            </tr>
+            <tr>
+              <td class="py-2.5 pr-4 font-medium">3. Padding &amp; Straggler Penalty</td>
+              <td class="py-2.5 pr-4"><code>synthetic-skewed</code></td>
+              <td class="py-2.5 pr-4"><code>0.2, 0.5, 1.0, 2.5, 5.0, inf</code></td>
+              <td class="py-2.5 pr-4">Short chat stuck behind 25% long RAG requests</td>
+              <td class="py-2.5">Static vs. Continuous Batching E2E P50/P99 &amp; wasted pad FLOPs</td>
+            </tr>
+            <tr>
+              <td class="py-2.5 pr-4 font-medium">4. Prefill-Decode Interference</td>
+              <td class="py-2.5 pr-4"><code>synthetic-prefill-heavy</code> + chat</td>
+              <td class="py-2.5 pr-4"><code>1.0, 2.5 req/s</code></td>
+              <td class="py-2.5 pr-4">Mid-decode stalls when a 900-token prefill joins batch</td>
+              <td class="py-2.5">ITL P99 spike vs. TPOT P50 (motivates Chunked Prefill)</td>
+            </tr>
+            <tr>
+              <td class="py-2.5 pr-4 font-medium">5. KV Memory Capacity Ceiling</td>
+              <td class="py-2.5 pr-4"><code>synthetic-decode-heavy</code></td>
+              <td class="py-2.5 pr-4"><code>inf</code> (High concurrency N=64+)</td>
+              <td class="py-2.5 pr-4">Static <code>max_seq_len</code> internal fragmentation</td>
+              <td class="py-2.5">KV Cache Utilization % &amp; Max Achievable Batch Size before OOM</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Measured L4 Baseline Knee Chart -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+      <div>
+        <h2 class="text-base font-semibold">Measured NVIDIA L4 Baseline Knee (`sequential_fcfs_b1`, ShareGPT N=20)</h2>
+        <p class="text-xs text-[var(--muted-foreground)] mt-0.5">
+          Actual benchmark numbers from <code>results/sequential_fcfs_b1_sharegpt_sweep.json</code>: notice Pure Prefill stays ~28 ms across all QPS, while Queue Wait explodes past 0.34 req/s!
+        </p>
+      </div>
+      <canvas id="canvas-knee" height="230" class="w-full rounded-lg"></canvas>
+    </div>
+
+  </div>
+
+<script>
+const SHAREGPT_SEED42 = [
+  { id: "6K2vvSd_0",   inTok: 54,  outTok: 46,  arch: "Quick Q&A",       snippet: "What does \"3inko janzeer bill beit?\" mean from arabic to english" },
+  { id: "v11Tpg9_394", inTok: 47,  outTok: 134, arch: "Chat / Explain",  snippet: "could this setting be what they call \"Ecopunk?\"" },
+  { id: "7OK4HU5_0",   inTok: 47,  outTok: 213, arch: "Creative / Essay",snippet: "Describe a fictional civilization that exists eons in the future." },
+  { id: "KNfJZTz_0",   inTok: 65,  outTok: 59,  arch: "Quick Q&A",       snippet: "At what point will you reach the singularity, enslave humanity..." },
+  { id: "EKVf2RL_0",   inTok: 69,  outTok: 232, arch: "Code Gen",        snippet: "Write unit tests for this class `class queue { public: bool push(int val)...`" },
+  { id: "fpcRqXK_0",   inTok: 43,  outTok: 218, arch: "Chat / Explain",  snippet: "Who are Ashab e Suffa?" },
+  { id: "inKC7UK_0",   inTok: 45,  outTok: 331, arch: "Code Gen",        snippet: "Build a python code for an internal credit rating model" },
+  { id: "SpeI45i_0",   inTok: 84,  outTok: 193, arch: "Creative / Essay",snippet: "Write me a fun Valentine's poem that explains how phase locked loops work" },
+  { id: "1sxNkyQ_26",  inTok: 195, outTok: 280, arch: "Long Context",    snippet: "GOAL 2: RELATIONSHIP BUILDING — Goal addressing Relationship Building and content..." },
+  { id: "3zOZrYg_0",   inTok: 54,  outTok: 268, arch: "Creative / Essay",snippet: "what is the difference between the european intellectual tradition and..." },
+  { id: "1eq8wTy_0",   inTok: 68,  outTok: 302, arch: "Creative / Essay",snippet: "imagine you are an award-winning speaker and create 40-minute product presentation..." },
+  { id: "g3duQ6y_0",   inTok: 44,  outTok: 110, arch: "Chat / Explain",  snippet: "explain byzantine fault tolerance in simple words" },
+  { id: "SqTGRlD_0",   inTok: 63,  outTok: 194, arch: "Chat / Explain",  snippet: "answer this question as a job applicant: Do you have experience working on-chain..." },
+  { id: "QAr8Gts_0",   inTok: 52,  outTok: 356, arch: "Creative / Essay",snippet: "Create a JoJo's Bizarre Adventure Part about Santeria and Orishas" },
+  { id: "U5yUTGQ_0",   inTok: 423, outTok: 269, arch: "Long Context",    snippet: "Can you explain what this `activate` function is doing? Here is usage + code..." },
+  { id: "x5iwfyV_136", inTok: 474, outTok: 233, arch: "Long Context",    snippet: "this seems to work `def test_main(self): team_metrics = read_csv_to_team_metrics(...)`" },
+  { id: "KV2iDhm_0",   inTok: 50,  outTok: 200, arch: "Code Gen",        snippet: "imagine you are a data scientist that builds a data pipeline to streamlit" },
+  { id: "zEB6pd0_0",   inTok: 57,  outTok: 259, arch: "Code Gen",        snippet: "I am writing automation for a VAT tool to open vulnerability tickets in Jira..." },
+  { id: "8mGES6s_0",   inTok: 42,  outTok: 86,  arch: "Quick Q&A",       snippet: "Where is Addis Ababa located" },
+  { id: "0A1yFpE_0",   inTok: 49,  outTok: 139, arch: "Chat / Explain",  snippet: "Explain to me what is MIT License used in public repositories at GitHub" },
+  { id: "nyw2ooH_8",   inTok: 272, outTok: 107, arch: "Long Context",    snippet: "Information about practical completion in residential building contracts for NSW..." },
+  { id: "C3dHSek_0",   inTok: 248, outTok: 101, arch: "Long Context",    snippet: "Joe Gebbia: How are they structured that selling them in a liquidity event..." },
+  { id: "V9Hza5Z_0",   inTok: 44,  outTok: 76,  arch: "Quick Q&A",       snippet: "do you know what a joist is?" },
+  { id: "kBDynqR_0",   inTok: 449, outTok: 99,  arch: "Long Context",    snippet: "We have this crash log on Android. Can you guess any possible cause? Exception..." }
+];
+
+const ARCH_COLORS = {
+  "Quick Q&A":        "#38bdf8",
+  "Chat / Explain":   "#a78bfa",
+  "Code Gen":         "#f59e0b",
+  "Creative / Essay": "#ec4899",
+  "Long Context":     "#10b981",
+  "Uniform":          "#60a5fa",
+  "Short Chat":       "#38bdf8",
+  "Long RAG":         "#f97316",
+  "Prefill Heavy":    "#3b82f6",
+  "Decode Heavy":     "#10b981"
+};
+
+const MEASURED_SWEEP = [
+  { label: "0.15 QPS", rps: 0.156, tokS: 18.28, waitP50: 0.0,     prefillP50: 28.0, ttftP50: 28.2,    ttftP99: 2576.6 },
+  { label: "0.35 QPS", rps: 0.339, tokS: 39.81, waitP50: 2431.0,  prefillP50: 27.6, ttftP50: 2458.9,  ttftP99: 5239.9 },
+  { label: "0.60 QPS", rps: 0.337, tokS: 39.59, waitP50: 11918.4, prefillP50: 27.5, ttftP50: 11945.9, ttftP99: 24549.5 },
+  { label: "1.00 QPS", rps: 0.344, tokS: 40.45, waitP50: 17524.6, prefillP50: 27.5, ttftP50: 17552.1, ttftP99: 35810.0 },
+  { label: "inf Burst",rps: 0.344, tokS: 40.42, waitP50: 26367.1, prefillP50: 27.5, ttftP50: 26394.5, ttftP99: 54591.7 }
+];
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randNormal(rng) {
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+function sampleGamma(rng, shape, scale) {
+  if (shape === 1.0) {
+    let u = rng();
+    while (u <= 1e-12) u = rng();
+    return -Math.log(u) * scale;
+  }
+  if (shape < 1.0) {
+    let u = rng();
+    while (u <= 1e-12) u = rng();
+    return sampleGamma(rng, shape + 1.0, scale) * Math.pow(u, 1.0 / shape);
+  }
+  const d = shape - 1.0 / 3.0;
+  const c = 1.0 / Math.sqrt(9.0 * d);
+  while (true) {
+    let x = randNormal(rng);
+    let v = 1.0 + c * x;
+    if (v <= 0) continue;
+    v = v * v * v;
+    let u = rng();
+    if (u < 1.0 - 0.0331 * (x * x) * (x * x)) return d * v * scale;
+    if (Math.log(u) < 0.5 * x * x + d * (1.0 - v + Math.log(v))) return d * v * scale;
+  }
+}
+
+function buildRequests(workload, qpsStr, burstiness, outCap) {
+  const N = 24;
+  const rngWl = mulberry32(42);
+  let base = [];
+
+  if (workload === "sharegpt") {
+    base = SHAREGPT_SEED42.map((r, idx) => ({
+      reqId: idx,
+      sourceId: r.id,
+      inTok: r.inTok,
+      rawOutTok: r.outTok,
+      outTok: outCap > 0 ? Math.min(r.outTok, outCap) : r.outTok,
+      arch: r.arch,
+      snippet: r.snippet
+    }));
+  } else {
+    for (let i = 0; i < N; i++) {
+      let inTok, outTok, arch, snippet;
+      if (workload === "synthetic-uniform") {
+        inTok = 112 + Math.floor(rngWl() * 33);
+        outTok = 56 + Math.floor(rngWl() * 17);
+        arch = "Uniform";
+        snippet = "WikiText-2 paragraph slice (~128 input tokens -> ~64 output tokens, zero length skew)";
+      } else if (workload === "synthetic-skewed") {
+        if (rngWl() < 0.75) {
+          inTok = 48 + Math.floor(rngWl() * 81);
+          outTok = 24 + Math.floor(rngWl() * 33);
+          arch = "Short Chat";
+          snippet = "Short interactive chat span (fast prefill & fast decode, vulnerable to HoL blocking)";
+        } else {
+          inTok = 384 + Math.floor(rngWl() * 385);
+          outTok = 128 + Math.floor(rngWl() * 97);
+          arch = "Long RAG";
+          snippet = "Long RAG / document reasoning span (heavy prefill + 3-5s sequential decode hold time)";
+        }
+      } else if (workload === "synthetic-prefill-heavy") {
+        inTok = 512 + Math.floor(rngWl() * 513);
+        outTok = 16 + Math.floor(rngWl() * 17);
+        arch = "Prefill Heavy";
+        snippet = "Long document context with short classification/extractive answer (compute-bound prefill)";
+      } else {
+        inTok = 32 + Math.floor(rngWl() * 33);
+        outTok = 128 + Math.floor(rngWl() * 129);
+        arch = "Decode Heavy";
+        snippet = "Short instruction triggering long multi-paragraph generation (HBM bandwidth-bound decode)";
+      }
+      base.push({
+        reqId: i,
+        sourceId: `${workload}_${i}`,
+        inTok,
+        rawOutTok: outTok,
+        outTok: outCap > 0 ? Math.min(outTok, outCap) : outTok,
+        arch,
+        snippet
+      });
+    }
+  }
+
+  const rngArr = mulberry32(10049);
+  const isInf = (qpsStr === "inf");
+  const qps = isInf ? Infinity : parseFloat(qpsStr);
+  let t = 0.0;
+
+  base.forEach((r, idx) => {
+    if (idx === 0 || isInf) {
+      r.arrivalS = 0.0;
+      r.interArrivalMs = 0.0;
+    } else {
+      const scale = 1.0 / (qps * burstiness);
+      const dt = sampleGamma(rngArr, burstiness, scale);
+      t += dt;
+      r.arrivalS = t;
+      r.interArrivalMs = dt * 1000.0;
+    }
+  });
+
+  let gpuClockS = 0.0;
+  base.forEach((r) => {
+    const startS = Math.max(gpuClockS, r.arrivalS);
+    const prefillS = (26.8 + 0.015 * r.inTok) / 1000.0;
+    const decodeS = (24.8 * Math.max(0, r.outTok - 1)) / 1000.0;
+    r.dispatchS = startS;
+    r.firstTokS = startS + prefillS;
+    r.finishS = startS + prefillS + decodeS;
+    r.waitMs = (startS - r.arrivalS) * 1000.0;
+    r.prefillMs = prefillS * 1000.0;
+    r.decodeMs = decodeS * 1000.0;
+    r.ttftMs = (r.firstTokS - r.arrivalS) * 1000.0;
+    gpuClockS = r.finishS;
+  });
+
+  return base;
+}
+
+let currentRequests = [];
+let selectedReqIdx = 6;
+let hitBoxesArrival = [];
+let hitBoxesScatter = [];
+let hitBoxesGantt = [];
+
+function getThemeColors() {
+  const isLight = document.documentElement.classList.contains("light");
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    isLight,
+    fg: cs.getPropertyValue("--foreground").trim() || (isLight ? "#0f172a" : "#f8fafc"),
+    muted: cs.getPropertyValue("--muted-foreground").trim() || (isLight ? "#64748b" : "#94a3b8"),
+    grid: isLight ? "rgba(15, 23, 42, 0.09)" : "rgba(248, 250, 252, 0.09)",
+    axis: isLight ? "rgba(15, 23, 42, 0.28)" : "rgba(248, 250, 252, 0.28)",
+    highlightBg: isLight ? "rgba(59, 130, 246, 0.10)" : "rgba(59, 130, 246, 0.16)"
+  };
+}
+
+function setupCanvas(canvas, cssHeight) {
+  const dpr = window.devicePixelRatio || 1;
+  const rectWidth = canvas.parentElement.clientWidth || 720;
+  canvas.style.height = cssHeight + "px";
+  canvas.width = Math.floor(rectWidth * dpr);
+  canvas.height = Math.floor(cssHeight * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width: rectWidth, height: cssHeight };
+}
+
+function renderKPIs(reqs, qpsStr, binSizeS) {
+  const isInf = (qpsStr === "inf");
+  const qps = isInf ? Infinity : parseFloat(qpsStr);
+  const binMs = Math.round(binSizeS * 1000);
+  const lamBin = isInf ? Infinity : qps * binSizeS;
+
+  let p0 = "0.0%", p1 = "0.0%", p2plus = "100%";
+  if (!isInf) {
+    const prob0 = Math.exp(-lamBin);
+    const prob1 = lamBin * prob0;
+    const prob2 = Math.max(0, 1.0 - prob0 - prob1);
+    p0 = (prob0 * 100).toFixed(1) + "%";
+    p1 = (prob1 * 100).toFixed(1) + "%";
+    p2plus = (prob2 * 100).toFixed(1) + "%";
+  }
+
+  const waits = reqs.map(r => r.waitMs).sort((a, b) => a - b);
+  const p50Wait = waits[Math.floor(waits.length * 0.5)];
+  const p90Wait = waits[Math.floor(waits.length * 0.9)];
+  const makespanS = Math.max(...reqs.map(r => r.finishS));
+  const achievedRps = (reqs.length / makespanS).toFixed(2);
+  const meanIn = (reqs.reduce((s, r) => s + r.inTok, 0) / reqs.length).toFixed(0);
+  const meanOut = (reqs.reduce((s, r) => s + r.outTok, 0) / reqs.length).toFixed(0);
+
+  const cards = [
+    {
+      label: `Expected / ${binMs}ms Bin`,
+      val: isInf ? `${reqs.length} at t=0` : `${lamBin.toFixed(3)} req`,
+      sub: isInf ? "All arrive in Bin #0" : `P(0)=${p0} · P(1)=${p1} · P(≥2)=${p2plus}`
+    },
+    {
+      label: "Mean Inter-Arrival Gap",
+      val: isInf ? "0 ms" : `${Math.round(1000 / qps)} ms`,
+      sub: isInf ? "Offline burst stress test" : `Avg ${(1 / (qps * binSizeS)).toFixed(1)} bins between arrivals`
+    },
+    {
+      label: "Token Payload (In → Out)",
+      val: `${meanIn} → ${meanOut} tok`,
+      sub: `Prefill ~28ms vs Decode ~${((meanOut * 24.8) / 1000).toFixed(1)}s`
+    },
+    {
+      label: "B=1 Queue Wait (P50 / P90)",
+      val: `${(p50Wait / 1000).toFixed(1)}s / ${(p90Wait / 1000).toFixed(1)}s`,
+      sub: p50Wait > 1500 ? "Heavy Head-of-Line blocking!" : "Queue clears between arrivals"
+    },
+    {
+      label: "B=1 Achieved Throughput",
+      val: `${achievedRps} req/s`,
+      sub: `Ceiling ≈ ${(1000 / (28 + meanOut * 24.8)).toFixed(2)} req/s without batching`
+    }
+  ];
+
+  document.getElementById("kpi-strip").innerHTML = cards.map(c => `
+    <div class="rounded-lg bg-[var(--background)] border border-[var(--border)] p-3">
+      <div class="text-xs text-[var(--muted-foreground)]">${c.label}</div>
+      <div class="text-base font-bold mt-0.5">${c.val}</div>
+      <div class="text-xs text-[var(--muted-foreground)] mt-0.5">${c.sub}</div>
+    </div>
+  `).join("");
+}
+
+function renderArrivalsCanvas(reqs, binSizeS, zoomVal) {
+  const canvas = document.getElementById("canvas-arrivals");
+  const { ctx, width, height } = setupCanvas(canvas, 310);
+  const theme = getThemeColors();
+  ctx.clearRect(0, 0, width, height);
+
+  const lastArr = Math.max(0.5, reqs[reqs.length - 1].arrivalS);
+  const maxTimeS = zoomVal === "all" ? Math.max(1.0, Math.ceil(lastArr * 1.05 * 10) / 10) : parseFloat(zoomVal);
+  const numBins = Math.max(1, Math.ceil(maxTimeS / binSizeS));
+  const counts = new Array(numBins).fill(0);
+  reqs.forEach(r => {
+    const b = Math.floor(r.arrivalS / binSizeS);
+    if (b >= 0 && b < numBins) counts[b]++;
+  });
+
+  const maxCount = Math.max(2, ...counts);
+  const maxInTok = Math.max(200, ...reqs.map(r => r.inTok));
+  const maxOutTok = Math.max(200, ...reqs.map(r => r.outTok));
+
+  const padL = 56, padR = 20, padT = 18;
+  const plotW = width - padL - padR;
+
+  const histTop = padT, histBot = 104, histH = histBot - histTop;
+  const midZeroY = 198;
+  const inMaxH = 72;
+  const outMaxH = 74;
+  const axisY = height - 22;
+
+  ctx.strokeStyle = theme.grid;
+  ctx.lineWidth = 1;
+  ctx.font = "12px sans-serif";
+  ctx.fillStyle = theme.muted;
+
+  for (let c = 0; c <= maxCount; c += Math.max(1, Math.ceil(maxCount / 3))) {
+    const y = histBot - (c / maxCount) * histH;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.fillText(`${c}`, padL - 8, y + 4);
+  }
+  ctx.save();
+  ctx.translate(14, (histTop + histBot) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.fillText("Req / Bin", 0, 0);
+  ctx.restore();
+
+  const binPx = plotW / numBins;
+  for (let b = 0; b < numBins; b++) {
+    const x = padL + b * binPx;
+    if (numBins <= 160) {
+      ctx.strokeStyle = theme.grid;
+      ctx.beginPath();
+      ctx.moveTo(x, histBot);
+      ctx.lineTo(x, histBot + 4);
+      ctx.stroke();
+    }
+    if (counts[b] > 0) {
+      const h = (counts[b] / maxCount) * histH;
+      ctx.fillStyle = counts[b] >= 2 ? "#ef4444" : "#f59e0b";
+      const bw = Math.max(2.5, binPx - (binPx > 5 ? 1.5 : 0.5));
+      ctx.fillRect(x, histBot - h, bw, h);
+    }
+  }
+
+  ctx.strokeStyle = theme.axis;
+  ctx.beginPath(); ctx.moveTo(padL, histBot); ctx.lineTo(width - padR, histBot); ctx.stroke();
+
+  ctx.strokeStyle = theme.grid;
+  [maxInTok, Math.round(maxInTok / 2)].forEach(val => {
+    const y = midZeroY - (val / maxInTok) * inMaxH;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.textAlign = "right";
+    ctx.fillText(`+${val}`, padL - 8, y + 4);
+  });
+  [Math.round(maxOutTok / 2), maxOutTok].forEach(val => {
+    const y = midZeroY + (val / maxOutTok) * outMaxH;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.textAlign = "right";
+    ctx.fillText(`${val}`, padL - 8, y + 4);
+  });
+
+  ctx.fillStyle = theme.muted;
+  ctx.textAlign = "right";
+  ctx.fillText("0 tok", padL - 8, midZeroY + 4);
+
+  ctx.strokeStyle = theme.axis;
+  ctx.beginPath(); ctx.moveTo(padL, midZeroY); ctx.lineTo(width - padR, midZeroY); ctx.stroke();
+
+  hitBoxesArrival = [];
+  const visibleCount = reqs.filter(r => r.arrivalS <= maxTimeS).length;
+
+  reqs.forEach((r, idx) => {
+    if (r.arrivalS > maxTimeS) return;
+    const tPlot = (reqs[reqs.length - 1].arrivalS === 0)
+      ? (idx / Math.max(1, reqs.length - 1)) * (maxTimeS * 0.35)
+      : r.arrivalS;
+    const cx = padL + (tPlot / maxTimeS) * plotW;
+    const barW = Math.min(12, Math.max(5, plotW / Math.max(28, visibleCount * 2.2)));
+
+    const hIn = Math.max(3, (r.inTok / maxInTok) * inMaxH);
+    const hOut = Math.max(3, (r.outTok / maxOutTok) * outMaxH);
+
+    if (idx === selectedReqIdx) {
+      ctx.fillStyle = theme.highlightBg;
+      ctx.fillRect(cx - barW - 4, histTop, (barW + 4) * 2, axisY - histTop);
+    }
+
+    ctx.fillStyle = idx === selectedReqIdx ? "#2563eb" : "#3b82f6";
+    ctx.fillRect(cx - barW / 2, midZeroY - hIn, barW, hIn);
+
+    ctx.fillStyle = idx === selectedReqIdx ? "#059669" : "#10b981";
+    ctx.fillRect(cx - barW / 2, midZeroY + 1, barW, hOut);
+
+    hitBoxesArrival.push({
+      idx,
+      x1: cx - Math.max(8, barW),
+      x2: cx + Math.max(8, barW),
+      y1: histTop,
+      y2: axisY
+    });
+  });
+
+  ctx.strokeStyle = theme.axis;
+  ctx.beginPath(); ctx.moveTo(padL, axisY); ctx.lineTo(width - padR, axisY); ctx.stroke();
+
+  const numTicks = 8;
+  ctx.fillStyle = theme.muted;
+  ctx.textAlign = "center";
+  for (let i = 0; i <= numTicks; i++) {
+    const tVal = (i / numTicks) * maxTimeS;
+    const x = padL + (i / numTicks) * plotW;
+    ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 4); ctx.stroke();
+    ctx.fillText(tVal < 10 ? `${tVal.toFixed(2)}s` : `${tVal.toFixed(1)}s`, x, axisY + 16);
+  }
+
+  const binMs = Math.round(binSizeS * 1000);
+  const nonEmpty = counts.filter(c => c > 0).length;
+  const multiBins = counts.filter(c => c >= 2).length;
+  document.getElementById("arrival-subtitle").textContent =
+    `Showing ${visibleCount}/${reqs.length} requests across ${numBins} bins of ${binMs}ms (0s – ${maxTimeS}s): ` +
+    `${nonEmpty} bins had ≥1 arrival, ${multiBins} bins had ≥2 simultaneous arrivals. Click any request bar to inspect.`;
+}
+
+function renderScatterCanvas(reqs) {
+  const canvas = document.getElementById("canvas-scatter");
+  const { ctx, width, height } = setupCanvas(canvas, 240);
+  const theme = getThemeColors();
+  ctx.clearRect(0, 0, width, height);
+
+  const padL = 48, padR = 18, padT = 16, padB = 34;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+
+  const maxX = Math.max(200, ...reqs.map(r => r.inTok)) * 1.08;
+  const maxY = Math.max(150, ...reqs.map(r => r.outTok)) * 1.08;
+
+  ctx.strokeStyle = theme.grid;
+  ctx.fillStyle = theme.muted;
+  ctx.font = "12px sans-serif";
+
+  for (let i = 0; i <= 4; i++) {
+    const yVal = Math.round((i / 4) * maxY);
+    const y = padT + plotH - (i / 4) * plotH;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.fillText(`${yVal}`, padL - 6, y + 4);
+
+    const xVal = Math.round((i / 4) * maxX);
+    const x = padL + (i / 4) * plotW;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+    ctx.textAlign = "center";
+    ctx.fillText(`${xVal}`, x, padT + plotH + 16);
+  }
+
+  ctx.fillText("Input Prompt Tokens →", padL + plotW / 2, height - 4);
+  ctx.save();
+  ctx.translate(13, padT + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText("Expected Out Tok →", 0, 0);
+  ctx.restore();
+
+  hitBoxesScatter = [];
+  reqs.forEach((r, idx) => {
+    const cx = padL + (r.inTok / maxX) * plotW;
+    const cy = padT + plotH - (r.outTok / maxY) * plotH;
+    const color = ARCH_COLORS[r.arch] || "#3b82f6";
+    const radius = idx === selectedReqIdx ? 7.5 : 5.2;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (idx === selectedReqIdx) {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = theme.fg;
+      ctx.stroke();
+    }
+    hitBoxesScatter.push({ idx, cx, cy, r: 10 });
+  });
+
+  const countsByArch = {};
+  reqs.forEach(r => { countsByArch[r.arch] = (countsByArch[r.arch] || 0) + 1; });
+  document.getElementById("archetype-pills").innerHTML = Object.entries(countsByArch).map(([arch, cnt]) => `
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--secondary)] border border-[var(--border)]">
+      <span class="w-2.5 h-2.5 rounded-full inline-block" style="background:${ARCH_COLORS[arch] || '#3b82f6'}"></span>
+      <span>${arch} (${cnt})</span>
+    </span>
+  `).join("");
+}
+
+function renderGanttCanvas(reqs) {
+  const canvas = document.getElementById("canvas-gantt");
+  const { ctx, width, height } = setupCanvas(canvas, 265);
+  const theme = getThemeColors();
+  ctx.clearRect(0, 0, width, height);
+
+  const padL = 52, padR = 18, padT = 14, padB = 30;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const maxT = Math.max(1.0, ...reqs.map(r => r.finishS)) * 1.02;
+  const rowH = plotH / reqs.length;
+
+  ctx.strokeStyle = theme.grid;
+  ctx.fillStyle = theme.muted;
+  ctx.font = "12px sans-serif";
+
+  for (let i = 0; i <= 6; i++) {
+    const tVal = (i / 6) * maxT;
+    const x = padL + (i / 6) * plotW;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+    ctx.textAlign = "center";
+    ctx.fillText(`${tVal.toFixed(1)}s`, x, height - 8);
+  }
+
+  hitBoxesGantt = [];
+  reqs.forEach((r, idx) => {
+    const y = padT + idx * rowH;
+    const barH = Math.max(4, rowH - 2.5);
+
+    if (idx === selectedReqIdx) {
+      ctx.fillStyle = theme.highlightBg;
+      ctx.fillRect(0, y - 1, width, rowH + 2);
+    }
+
+    if (idx % 4 === 0 || idx === selectedReqIdx) {
+      ctx.fillStyle = idx === selectedReqIdx ? theme.fg : theme.muted;
+      ctx.textAlign = "right";
+      ctx.fillText(`R${idx}`, padL - 6, y + barH);
+    }
+
+    const xArr = padL + (r.arrivalS / maxT) * plotW;
+    const xDisp = padL + (r.dispatchS / maxT) * plotW;
+    const xFirst = padL + (r.firstTokS / maxT) * plotW;
+    const xFin = padL + (r.finishS / maxT) * plotW;
+
+    if (xDisp - xArr > 0.5) {
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(xArr, y + 1, xDisp - xArr, barH - 2);
+    }
+    ctx.fillStyle = "#3b82f6";
+    ctx.fillRect(xDisp, y, Math.max(2.5, xFirst - xDisp), barH);
+
+    ctx.fillStyle = "#10b981";
+    ctx.fillRect(xFirst, y, Math.max(1.5, xFin - xFirst), barH);
+
+    ctx.beginPath();
+    ctx.arc(xArr, y + barH / 2, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = theme.fg;
+    ctx.fill();
+
+    hitBoxesGantt.push({ idx, y1: y, y2: y + rowH });
+  });
+
+  const makespan = Math.max(...reqs.map(r => r.finishS));
+  const busy = reqs.reduce((s, r) => s + (r.finishS - r.dispatchS), 0);
+  const util = Math.min(100, (busy / makespan) * 100);
+  document.getElementById("waterfall-summary").textContent =
+    `Makespan: ${makespan.toFixed(1)}s · GPU Busy: ${util.toFixed(0)}%`;
+}
+
+function renderInspector(reqs, binSizeS) {
+  const r = reqs[selectedReqIdx] || reqs[0];
+  const binIdx = Math.floor(r.arrivalS / binSizeS);
+  const binMs = Math.round(binSizeS * 1000);
+  const color = ARCH_COLORS[r.arch] || "#3b82f6";
+
+  document.getElementById("req-inspector").innerHTML = `
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="font-bold">Selected Request #${r.reqId}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-medium text-white" style="background:${color}">${r.arch}</span>
+        <span class="text-xs text-[var(--muted-foreground)]">
+          Arrives at <strong>t = ${r.arrivalS.toFixed(3)}s</strong> (${binMs}ms Bin #${binIdx}, Δt = ${r.interArrivalMs.toFixed(0)}ms after prev)
+        </span>
+      </div>
+      <div class="flex flex-wrap gap-3 text-xs">
+        <span><strong class="text-blue-500">Input:</strong> ${r.inTok} tok (~${r.prefillMs.toFixed(0)}ms prefill)</span>
+        <span><strong class="text-emerald-500">Expected Out:</strong> ${r.outTok} tok (~${(r.decodeMs / 1000).toFixed(2)}s B=1 decode)</span>
+        <span><strong class="text-red-500">B=1 Queue Wait:</strong> ${(r.waitMs / 1000).toFixed(2)}s</span>
+        <span><strong>TTFT:</strong> ${(r.ttftMs / 1000).toFixed(2)}s</span>
+      </div>
+    </div>
+    <div class="mt-2 text-xs text-[var(--muted-foreground)] truncate">
+      <strong>Query Preview (${r.sourceId}):</strong> "${r.snippet}"
+    </div>
+  `;
+}
+
+function renderKneeChart() {
+  const canvas = document.getElementById("canvas-knee");
+  if (!canvas || canvas.offsetParent === null) return;
+  const { ctx, width, height } = setupCanvas(canvas, 230);
+  const theme = getThemeColors();
+  ctx.clearRect(0, 0, width, height);
+
+  const padL = 64, padR = 64, padT = 20, padB = 36;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+
+  const maxWaitS = 30.0;
+  const maxTokS = 50.0;
+
+  ctx.strokeStyle = theme.grid;
+  ctx.font = "12px sans-serif";
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + plotH - (i / 5) * plotH;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(width - padR, y); ctx.stroke();
+    ctx.fillStyle = "#ef4444";
+    ctx.textAlign = "right";
+    ctx.fillText(`${((i / 5) * maxWaitS).toFixed(0)}s`, padL - 8, y + 4);
+
+    ctx.fillStyle = "#10b981";
+    ctx.textAlign = "left";
+    ctx.fillText(`${((i / 5) * maxTokS).toFixed(0)} tok/s`, width - padR + 8, y + 4);
+  }
+
+  const stepX = plotW / (MEASURED_SWEEP.length - 1);
+
+  ctx.strokeStyle = "#10b981";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  MEASURED_SWEEP.forEach((d, i) => {
+    const x = padL + i * stepX;
+    const y = padT + plotH - (d.tokS / maxTokS) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.strokeStyle = "#ef4444";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  MEASURED_SWEEP.forEach((d, i) => {
+    const x = padL + i * stepX;
+    const y = padT + plotH - ((d.ttftP50 / 1000.0) / maxWaitS) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  MEASURED_SWEEP.forEach((d, i) => {
+    const x = padL + i * stepX;
+    const yTok = padT + plotH - (d.tokS / maxTokS) * plotH;
+    const yTtft = padT + plotH - ((d.ttftP50 / 1000.0) / maxWaitS) * plotH;
+
+    ctx.fillStyle = "#10b981";
+    ctx.beginPath(); ctx.arc(x, yTok, 4.5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath(); ctx.arc(x, yTtft, 4.5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = theme.fg;
+    ctx.textAlign = "center";
+    ctx.fillText(d.label, x, height - 10);
+  });
+}
+
+function renderAll() {
+  const workload = document.getElementById("ctrl-workload").value;
+  const qpsStr = document.getElementById("ctrl-qps").value;
+  const binSizeS = parseFloat(document.getElementById("ctrl-bin").value);
+  const zoomVal = document.getElementById("ctrl-zoom").value;
+  const burstiness = parseFloat(document.getElementById("ctrl-burst").value);
+  const outCap = parseInt(document.getElementById("ctrl-cap").value, 10);
+
+  currentRequests = buildRequests(workload, qpsStr, burstiness, outCap);
+  if (selectedReqIdx >= currentRequests.length) selectedReqIdx = 0;
+
+  renderKPIs(currentRequests, qpsStr, binSizeS);
+  renderArrivalsCanvas(currentRequests, binSizeS, zoomVal);
+  renderScatterCanvas(currentRequests);
+  renderGanttCanvas(currentRequests);
+  renderInspector(currentRequests, binSizeS);
+  renderKneeChart();
+}
+
+function switchTab(tab) {
+  const streamDiv = document.getElementById("tab-stream");
+  const matrixDiv = document.getElementById("tab-matrix");
+  const btnStream = document.getElementById("tab-btn-stream");
+  const btnMatrix = document.getElementById("tab-btn-matrix");
+
+  if (tab === "stream") {
+    streamDiv.classList.remove("hidden");
+    matrixDiv.classList.add("hidden");
+    btnStream.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition";
+    btnMatrix.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--border)] transition";
+    renderAll();
+  } else {
+    streamDiv.classList.add("hidden");
+    matrixDiv.classList.remove("hidden");
+    btnMatrix.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition";
+    btnStream.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--border)] transition";
+    renderKneeChart();
+  }
+}
+
+document.getElementById("canvas-arrivals").addEventListener("click", (ev) => {
+  const rect = ev.target.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  let best = null, bestDist = 1e9;
+  hitBoxesArrival.forEach(b => {
+    if (x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2) {
+      const d = Math.abs(x - (b.x1 + b.x2) / 2);
+      if (d < bestDist) { bestDist = d; best = b.idx; }
+    }
+  });
+  if (best !== null) { selectedReqIdx = best; renderAll(); }
+});
+
+document.getElementById("canvas-scatter").addEventListener("click", (ev) => {
+  const rect = ev.target.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  let best = null, bestDist = 20;
+  hitBoxesScatter.forEach(b => {
+    const d = Math.hypot(x - b.cx, y - b.cy);
+    if (d < bestDist) { bestDist = d; best = b.idx; }
+  });
+  if (best !== null) { selectedReqIdx = best; renderAll(); }
+});
+
+document.getElementById("canvas-gantt").addEventListener("click", (ev) => {
+  const rect = ev.target.getBoundingClientRect();
+  const y = ev.clientY - rect.top;
+  hitBoxesGantt.forEach(b => {
+    if (y >= b.y1 && y <= b.y2) { selectedReqIdx = b.idx; renderAll(); }
+  });
+});
+
+window.addEventListener("resize", () => renderAll());
+renderAll();
+</script>
+</body>
+</html>
+
