@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 5 · Baseline vs Static vs Continuous Batching (NVIDIA L4)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #0b0f19;
+      --foreground: #f8fafc;
+      --card: #111827;
+      --card-foreground: #f8fafc;
+      --primary: #3b82f6;
+      --primary-foreground: #ffffff;
+      --secondary: #1e293b;
+      --secondary-foreground: #e2e8f0;
+      --muted: #1e293b;
+      --muted-foreground: #94a3b8;
+      --border: #1e293b;
+    }
+    html.light {
+      --background: #f8fafc;
+      --foreground: #0f172a;
+      --card: #ffffff;
+      --card-foreground: #0f172a;
+      --primary: #2563eb;
+      --primary-foreground: #ffffff;
+      --secondary: #f1f5f9;
+      --secondary-foreground: #0f172a;
+      --muted: #f1f5f9;
+      --muted-foreground: #64748b;
+      --border: #e2e8f0;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-5 md:p-6 space-y-5">
+
+  <!-- Header -->
+  <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+          Chapter 5 · NVIDIA L4 Measured Benchmark (ShareGPT Uncapped, N=36)
+        </div>
+        <h1 class="text-xl font-bold mt-1">
+          Sequential (`B=1`) vs. Static Batching vs. Continuous Batching
+        </h1>
+        <p class="text-sm text-[var(--muted-foreground)] mt-1">
+          Up to <strong>7.65×</strong> higher throughput (<code>300.9 tok/s</code> vs <code>39.3 tok/s</code>) and <strong>140×</strong> lower median TTFT at busy online QPS by eliminating Static Batching's ~71% prefill padding waste and ~45% zombie decode slots.
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button id="btn-tab-results" onclick="setTab('results')" class="px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition">
+          1. Measured (λ, β) Curves
+        </button>
+        <button id="btn-tab-sim" onclick="setTab('sim')" class="px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--border)] transition">
+          2. Visual Scheduler Waterfall (Why Static Stalls)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 1: MEASURED NVIDIA L4 RESULTS -->
+  <div id="view-results" class="space-y-5">
+
+    <!-- Headline KPI Cards (Busy Online lambda=2.5, beta=1.0 & Burst) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+        <div class="text-xs font-semibold uppercase text-[var(--muted-foreground)]">Peak Burst Throughput (λ = ∞)</div>
+        <div class="text-2xl font-bold text-emerald-500 mt-1">300.9 tok/s <span class="text-sm font-medium">(7.65×)</span></div>
+        <div class="text-xs text-[var(--muted-foreground)] mt-1">
+          Continuous <code>B=16</code> vs. Static <code>B=16</code> (<code>164.5 tok/s</code>) &amp; <code>B=1</code> (<code>39.3 tok/s</code>)
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+        <div class="text-xs font-semibold uppercase text-[var(--muted-foreground)]">Median TTFT at Busy QPS (λ = 2.5)</div>
+        <div class="text-2xl font-bold text-blue-500 mt-1">62 ms <span class="text-sm font-medium">vs 8,666 ms</span></div>
+        <div class="text-xs text-[var(--muted-foreground)] mt-1">
+          <strong>140× lower</strong> median TTFT on Continuous <code>B=16</code> vs. Static <code>B=16</code> (<code>88.9s</code> on <code>B=1</code>)
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+        <div class="text-xs font-semibold uppercase text-[var(--muted-foreground)]">Static Batch Waste (ShareGPT)</div>
+        <div class="text-2xl font-bold text-amber-500 mt-1">71% Pad · 45% Zombie</div>
+        <div class="text-xs text-[var(--muted-foreground)] mt-1">
+          Static <code>B=16</code> averages only <strong>4.0–6.4</strong> live requests/step; Continuous wastes <strong>0%</strong>
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+        <div class="text-xs font-semibold uppercase text-[var(--muted-foreground)]">Decode Step Scaling (Profiler)</div>
+        <div class="text-2xl font-bold text-purple-500 mt-1">16× Tok in 1.09× Time</div>
+        <div class="text-xs text-[var(--muted-foreground)] mt-1">
+          <code>B=1</code>: 25.5ms (1 tok) → <code>B=16</code>: 27.8ms (16 tok, 67% GPU duty cycle)
+        </div>
+      </div>
+    </div>
+
+    <!-- Sweep A Charts: Throughput & TTFT across Arrival Frequency lambda -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div>
+          <h2 class="text-base font-semibold">Sweep A1 · Output Token Throughput Across Poisson λ (β = 1.0)</h2>
+          <p class="text-xs text-[var(--muted-foreground)]">
+            Measured <code>tok/s</code> on NVIDIA L4 across <code>λ = 0.25, 1.0, 2.5, 5.0, inf</code>.
+          </p>
+        </div>
+        <canvas id="chart-tps" height="240" class="w-full"></canvas>
+        <div id="engine-legend" class="flex flex-wrap gap-3 text-xs pt-1"></div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div>
+          <h2 class="text-base font-semibold">Sweep A2 · Median TTFT (Log Scale, ms) Across Poisson λ</h2>
+          <p class="text-xs text-[var(--muted-foreground)]">
+            Notice Continuous <code>B=16</code> stays ~55–62 ms up to <code>λ = 2.5 req/s</code> while Static Batching stalls for 4–11 seconds!
+          </p>
+        </div>
+        <canvas id="chart-ttft" height="240" class="w-full"></canvas>
+      </div>
+    </div>
+
+    <!-- Sweep B: Burstiness (beta) Impact & Hardware Decode Scaling -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div>
+          <h2 class="text-base font-semibold">Sweep B · Arrival Shape β at Fixed λ = 2.5 req/s (`B=16`)</h2>
+          <p class="text-xs text-[var(--muted-foreground)]">
+            Comparing Micro-Bursts (<code>β=0.30</code>), Random Poisson (<code>β=1.0</code>), and Smooth Periodic (<code>β=8.0</code>) on SLO Goodput &amp; P99 TTFT.
+          </p>
+        </div>
+        <canvas id="chart-beta" height="225" class="w-full"></canvas>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div>
+          <h2 class="text-base font-semibold">Why Static Batching Under-Utilizes `B=16` Slots</h2>
+          <p class="text-xs text-[var(--muted-foreground)]">
+            Effective active requests per decode step out of 16 pre-allocated KV slots across arrival scenarios.
+          </p>
+        </div>
+        <canvas id="chart-occ" height="225" class="w-full"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB 2: VISUAL SCHEDULER WATERFALL -->
+  <div id="view-sim" class="hidden space-y-5">
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-[var(--muted-foreground)] mb-1.5">Scheduler Architecture</label>
+          <select id="sim-engine" onchange="renderWaterfallSim()" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-3 py-2 text-sm">
+            <option value="b1">Baseline: Sequential FCFS (B=1)</option>
+            <option value="static" selected>Stage 1: Static Padded Batching (B=6)</option>
+            <option value="continuous">Stage 2: Continuous Batching (B=6)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase text-[var(--muted-foreground)] mb-1.5">Arrival Rate λ (QPS)</label>
+          <select id="sim-qps" onchange="renderWaterfallSim()" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-3 py-2 text-sm">
+            <option value="0.5">0.5 req/s (Moderate)</option>
+            <option value="1.5">1.5 req/s (Busy)</option>
+            <option value="2.5" selected>2.5 req/s (High Online Traffic)</option>
+            <option value="inf">inf (Offline Burst at t=0)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase text-[var(--muted-foreground)] mb-1.5">Arrival Shape β</label>
+          <select id="sim-beta" onchange="renderWaterfallSim()" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-3 py-2 text-sm">
+            <option value="0.30">β = 0.30 (Clumpy Micro-Bursts)</option>
+            <option value="1.0" selected>β = 1.00 (Standard Poisson)</option>
+            <option value="8.0">β = 8.00 (Smooth Periodic)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--border)] text-xs">
+        <div class="flex flex-wrap items-center gap-4">
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#ef4444"></span>Queue Wait</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#3b82f6"></span>Prefill</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#10b981"></span>Active Decode</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#94a3b8"></span>Zombie Slot Hold (Static Batch Only!)</span>
+        </div>
+        <div id="sim-stats" class="font-semibold"></div>
+      </div>
+
+      <canvas id="chart-sim-gantt" height="360" class="w-full rounded-lg"></canvas>
+    </div>
+  </div>
+
+<script>
+const SWEEP_A_LABELS = ["0.25 QPS", "1.0 QPS", "2.5 QPS", "5.0 QPS", "inf Burst"];
+
+const ENGINES = [
+  { key: "b1",      label: "Sequential B=1",   color: "#94a3b8", tps: [38.8, 39.4, 39.3, 39.1, 39.3],   ttft: [27695, 78394, 88966, 93028, 95907], avgB: [1.0, 1.0, 1.0, 1.0, 1.0] },
+  { key: "st_b8",   label: "Static B=8",       color: "#f59e0b", tps: [54.7, 138.8, 153.6, 142.2, 145.3], ttft: [2035, 5564, 11407, 16707, 19763], avgB: [1.29, 3.26, 3.62, 3.51, 4.11] },
+  { key: "st_b16",  label: "Static B=16",      color: "#f97316", tps: [54.7, 155.5, 146.7, 172.4, 164.5], ttft: [2186, 4437, 8666, 8880, 16595],   avgB: [1.29, 3.65, 4.04, 4.96, 6.37] },
+  { key: "cb_b8",   label: "Continuous B=8",   color: "#3b82f6", tps: [57.2, 174.3, 212.5, 221.0, 224.5], ttft: [51, 60, 4930, 7000, 9752],       avgB: [1.73, 5.21, 6.29, 6.45, 6.56] },
+  { key: "cb_b16",  label: "Continuous B=16",  color: "#10b981", tps: [57.3, 182.8, 270.2, 286.3, 300.9], ttft: [46, 55, 62, 409, 3339],          avgB: [1.71, 5.32, 9.12, 9.92, 10.71] }
+];
+
+const SWEEP_B = [
+  { shape: "β=0.30 (Micro-Bursty)", stGoodput: 14, cbGoodput: 61, stP99: 18.1, cbP99: 4.55 },
+  { shape: "β=1.00 (Poisson)",      stGoodput: 17, cbGoodput: 69, stP99: 26.9, cbP99: 4.24 },
+  { shape: "β=8.00 (Smooth)",       stGoodput: 25, cbGoodput: 89, stP99: 21.7, cbP99: 2.54 }
+];
+
+const SHAREGPT_SAMPLE = [
+  { inTok: 54, outTok: 46 },  { inTok: 47, outTok: 134 }, { inTok: 47, outTok: 213 }, { inTok: 65, outTok: 59 },
+  { inTok: 69, outTok: 232 }, { inTok: 43, outTok: 218 }, { inTok: 45, outTok: 331 }, { inTok: 84, outTok: 193 },
+  { inTok: 195, outTok: 280 },{ inTok: 54, outTok: 268 }, { inTok: 68, outTok: 302 }, { inTok: 44, outTok: 110 },
+  { inTok: 63, outTok: 194 }, { inTok: 52, outTok: 356 }, { inTok: 423, outTok: 269 },{ inTok: 474, outTok: 233 },
+  { inTok: 50, outTok: 200 }, { inTok: 57, outTok: 259 }, { inTok: 42, outTok: 86 },  { inTok: 49, outTok: 139 }
+];
+
+function getTheme() {
+  const isLight = document.documentElement.classList.contains("light");
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    fg: cs.getPropertyValue("--foreground").trim() || (isLight ? "#0f172a" : "#f8fafc"),
+    muted: cs.getPropertyValue("--muted-foreground").trim() || (isLight ? "#64748b" : "#94a3b8"),
+    grid: isLight ? "rgba(15, 23, 42, 0.09)" : "rgba(248, 250, 252, 0.09)",
+    axis: isLight ? "rgba(15, 23, 42, 0.25)" : "rgba(248, 250, 252, 0.25)"
+  };
+}
+
+function initCanvas(id, h) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth || 500;
+  canvas.style.height = h + "px";
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h };
+}
+
+function renderResultsCharts() {
+  const theme = getTheme();
+
+  document.getElementById("engine-legend").innerHTML = ENGINES.map(e => `
+    <span class="inline-flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded-full inline-block" style="background:${e.color}"></span>
+      <span>${e.label}</span>
+    </span>
+  `).join("");
+
+  {
+    const { ctx, w, h } = initCanvas("chart-tps", 240);
+    const padL = 48, padR = 20, padT = 16, padB = 32;
+    const pw = w - padL - padR, ph = h - padT - padB;
+    const maxY = 330;
+
+    ctx.font = "12px sans-serif";
+    ctx.strokeStyle = theme.grid;
+    for (let i = 0; i <= 5; i++) {
+      const y = padT + ph - (i / 5) * ph;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = theme.muted;
+      ctx.textAlign = "right";
+      ctx.fillText(`${Math.round((i / 5) * maxY)}`, padL - 6, y + 4);
+    }
+
+    SWEEP_A_LABELS.forEach((lbl, i) => {
+      const x = padL + (i / (SWEEP_A_LABELS.length - 1)) * pw;
+      ctx.fillStyle = theme.fg;
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, x, h - 8);
+    });
+
+    ENGINES.forEach(eng => {
+      ctx.strokeStyle = eng.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      eng.tps.forEach((v, i) => {
+        const x = padL + (i / (SWEEP_A_LABELS.length - 1)) * pw;
+        const y = padT + ph - (v / maxY) * ph;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      eng.tps.forEach((v, i) => {
+        const x = padL + (i / (SWEEP_A_LABELS.length - 1)) * pw;
+        const y = padT + ph - (v / maxY) * ph;
+        ctx.fillStyle = eng.color;
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      });
+    });
+  }
+
+  {
+    const { ctx, w, h } = initCanvas("chart-ttft", 240);
+    const padL = 56, padR = 20, padT = 16, padB = 32;
+    const pw = w - padL - padR, ph = h - padT - padB;
+    const logMin = 1.3, logMax = 5.2;
+
+    ctx.font = "12px sans-serif";
+    [30, 100, 1000, 10000, 100000].forEach(ms => {
+      const ly = (Math.log10(ms) - logMin) / (logMax - logMin);
+      const y = padT + ph - ly * ph;
+      ctx.strokeStyle = ms === 2000 ? "rgba(239,68,68,0.4)" : theme.grid;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = theme.muted;
+      ctx.textAlign = "right";
+      ctx.fillText(ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`, padL - 6, y + 4);
+    });
+
+    const ySlo = padT + ph - ((Math.log10(2000) - logMin) / (logMax - logMin)) * ph;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = "#ef4444";
+    ctx.beginPath(); ctx.moveTo(padL, ySlo); ctx.lineTo(w - padR, ySlo); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ef4444";
+    ctx.textAlign = "left";
+    ctx.fillText("2s TTFT SLO", padL + 6, ySlo - 5);
+
+    SWEEP_A_LABELS.forEach((lbl, i) => {
+      const x = padL + (i / (SWEEP_A_LABELS.length - 1)) * pw;
+      ctx.fillStyle = theme.fg;
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, x, h - 8);
+    });
+
+    ENGINES.forEach(eng => {
+      ctx.strokeStyle = eng.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      eng.ttft.forEach((v, i) => {
+        const x = padL + (i / (SWEEP_A_LABELS.length - 1)) * pw;
+        const ly = (Math.log10(Math.max(20, v)) - logMin) / (logMax - logMin);
+        const y = padT + ph - ly * ph;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      eng.ttft.forEach((v, i) => {
+        const x = padL + (i / (SWEEP_A_LABELS.length - 1)) * pw;
+        const ly = (Math.log10(Math.max(20, v)) - logMin) / (logMax - logMin);
+        const y = padT + ph - ly * ph;
+        ctx.fillStyle = eng.color;
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      });
+    });
+  }
+
+  {
+    const { ctx, w, h } = initCanvas("chart-beta", 225);
+    const padL = 48, padR = 20, padT = 18, padB = 34;
+    const pw = w - padL - padR, ph = h - padT - padB;
+    ctx.font = "12px sans-serif";
+
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + ph - (i / 4) * ph;
+      ctx.strokeStyle = theme.grid;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = theme.muted;
+      ctx.textAlign = "right";
+      ctx.fillText(`${i * 25}%`, padL - 6, y + 4);
+    }
+
+    const groupW = pw / SWEEP_B.length;
+    const barW = Math.min(38, groupW * 0.28);
+
+    SWEEP_B.forEach((d, i) => {
+      const cx = padL + (i + 0.5) * groupW;
+      const hSt = (d.stGoodput / 100) * ph;
+      const hCb = (d.cbGoodput / 100) * ph;
+
+      ctx.fillStyle = "#f97316";
+      ctx.fillRect(cx - barW - 4, padT + ph - hSt, barW, hSt);
+      ctx.fillText(`${d.stGoodput}%`, cx - barW / 2 - 4, padT + ph - hSt - 5);
+
+      ctx.fillStyle = "#10b981";
+      ctx.fillRect(cx + 4, padT + ph - hCb, barW, hCb);
+      ctx.textAlign = "center";
+      ctx.fillText(`${d.cbGoodput}%`, cx + barW / 2 + 4, padT + ph - hCb - 5);
+
+      ctx.fillStyle = theme.fg;
+      ctx.fillText(d.shape, cx, h - 10);
+    });
+  }
+
+  {
+    const { ctx, w, h } = initCanvas("chart-occ", 225);
+    const padL = 48, padR = 20, padT = 18, padB = 34;
+    const pw = w - padL - padR, ph = h - padT - padB;
+    const maxB = 16;
+    ctx.font = "12px sans-serif";
+
+    for (let b = 0; b <= 16; b += 4) {
+      const y = padT + ph - (b / maxB) * ph;
+      ctx.strokeStyle = theme.grid;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = theme.muted;
+      ctx.textAlign = "right";
+      ctx.fillText(`${b}`, padL - 6, y + 4);
+    }
+
+    const st16 = ENGINES[2].avgB;
+    const cb16 = ENGINES[4].avgB;
+    const groupW = pw / SWEEP_A_LABELS.length;
+    const barW = Math.min(28, groupW * 0.30);
+
+    SWEEP_A_LABELS.forEach((lbl, i) => {
+      const cx = padL + (i + 0.5) * groupW;
+      const hSt = (st16[i] / maxB) * ph;
+      const hCb = (cb16[i] / maxB) * ph;
+
+      ctx.fillStyle = "#f97316";
+      ctx.fillRect(cx - barW - 3, padT + ph - hSt, barW, hSt);
+
+      ctx.fillStyle = "#10b981";
+      ctx.fillRect(cx + 3, padT + ph - hCb, barW, hCb);
+
+      ctx.fillStyle = theme.fg;
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, cx, h - 10);
+    });
+  }
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function sampleGamma(rng, shape, scale) {
+  if (shape === 1.0) return -Math.log(Math.max(1e-9, rng())) * scale;
+  if (shape < 1.0) return sampleGamma(rng, shape + 1.0, scale) * Math.pow(Math.max(1e-9, rng()), 1.0 / shape);
+  const d = shape - 1 / 3, c = 1 / Math.sqrt(9 * d);
+  while (true) {
+    let u1 = Math.max(1e-9, rng()), u2 = Math.max(1e-9, rng());
+    let x = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    let v = 1 + c * x;
+    if (v <= 0) continue;
+    v = v * v * v;
+    let u = rng();
+    if (u < 1 - 0.0331 * x * x * x * x || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v * scale;
+  }
+}
+
+function renderWaterfallSim() {
+  const canvas = document.getElementById("chart-sim-gantt");
+  if (!canvas || canvas.offsetParent === null) return;
+  const engMode = document.getElementById("sim-engine").value;
+  const qpsVal = document.getElementById("sim-qps").value;
+  const beta = parseFloat(document.getElementById("sim-beta").value);
+
+  const rng = mulberry32(10049);
+  const isInf = qpsVal === "inf";
+  const qps = isInf ? Infinity : parseFloat(qpsVal);
+
+  let tArr = 0;
+  const reqs = SHAREGPT_SAMPLE.map((r, i) => {
+    if (i > 0 && !isInf) tArr += sampleGamma(rng, beta, 1.0 / (qps * beta));
+    return { id: i, inTok: r.inTok, outTok: r.outTok, arrS: isInf ? 0 : tArr };
+  });
+
+  const B = 6;
+  if (engMode === "b1") {
+    let clk = 0;
+    reqs.forEach(r => {
+      const s = Math.max(clk, r.arrS);
+      const pre = (27 + 0.015 * r.inTok) / 1000;
+      const dec = (25.5 * (r.outTok - 1)) / 1000;
+      r.dispS = s; r.firstS = s + pre; r.finS = s + pre + dec; r.relS = r.finS;
+      clk = r.finS;
+    });
+  } else if (engMode === "static") {
+    let clk = 0, idx = 0;
+    while (idx < reqs.length) {
+      if (reqs[idx].arrS > clk) clk = reqs[idx].arrS;
+      const batch = [];
+      while (idx < reqs.length && reqs[idx].arrS <= clk && batch.length < B) {
+        batch.push(reqs[idx++]);
+      }
+      const pMax = Math.max(...batch.map(x => x.inTok));
+      const mMax = Math.max(...batch.map(x => x.outTok));
+      const pre = (28 + 0.04 * batch.length * pMax / 8) / 1000;
+      const stepMs = 26.8 / 1000;
+      const batchEnd = clk + pre + (mMax - 1) * stepMs;
+      batch.forEach(r => {
+        r.dispS = clk;
+        r.firstS = clk + pre;
+        r.finS = clk + pre + (r.outTok - 1) * stepMs;
+        r.relS = batchEnd;
+      });
+      clk = batchEnd;
+    }
+  } else {
+    let clk = 0, nextIdx = 0;
+    const queue = [];
+    let active = [];
+    let completed = 0;
+    while (completed < reqs.length) {
+      while (nextIdx < reqs.length && reqs[nextIdx].arrS <= clk) queue.push(reqs[nextIdx++]);
+      if (active.length === 0 && queue.length === 0 && nextIdx < reqs.length) {
+        clk = reqs[nextIdx].arrS;
+        while (nextIdx < reqs.length && reqs[nextIdx].arrS <= clk) queue.push(reqs[nextIdx++]);
+      }
+      const newPre = [];
+      while (queue.length > 0 && (active.length + newPre.length) < B) {
+        const r = queue.shift();
+        r.dispS = clk;
+        newPre.push(r);
+      }
+      const preOverhead = newPre.reduce((s, r) => s + (12 + 0.02 * r.inTok), 0) / 1000;
+      const stepDur = (newPre.length > 0 ? Math.max(0.028, preOverhead) : 0.0275);
+      clk += stepDur;
+
+      const nextActive = [];
+      active.forEach(st => {
+        st.gen++;
+        if (st.gen >= st.r.outTok) {
+          st.r.finS = clk; st.r.relS = clk; completed++;
+        } else {
+          nextActive.push(st);
+        }
+      });
+      newPre.forEach(r => {
+        r.firstS = clk;
+        if (r.outTok <= 1) { r.finS = clk; r.relS = clk; completed++; }
+        else nextActive.push({ r, gen: 1 });
+      });
+      active = nextActive;
+    }
+  }
+
+  const { ctx, w, h } = initCanvas("chart-sim-gantt", 360);
+  const theme = getTheme();
+  const padL = 46, padR = 18, padT = 14, padB = 28;
+  const pw = w - padL - padR, ph = h - padT - padB;
+  const maxT = Math.max(...reqs.map(r => r.relS)) * 1.02;
+  const rowH = ph / reqs.length;
+
+  ctx.font = "12px sans-serif";
+  for (let i = 0; i <= 6; i++) {
+    const x = padL + (i / 6) * pw;
+    ctx.strokeStyle = theme.grid;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ph); ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.textAlign = "center";
+    ctx.fillText(`${((i / 6) * maxT).toFixed(1)}s`, x, h - 8);
+  }
+
+  reqs.forEach((r, i) => {
+    const y = padT + i * rowH;
+    const bh = Math.max(6, rowH - 3);
+    ctx.fillStyle = theme.muted;
+    ctx.textAlign = "right";
+    ctx.fillText(`R${i}`, padL - 6, y + bh - 1);
+
+    const xArr = padL + (r.arrS / maxT) * pw;
+    const xDisp = padL + (r.dispS / maxT) * pw;
+    const xFirst = padL + (r.firstS / maxT) * pw;
+    const xFin = padL + (r.finS / maxT) * pw;
+    const xRel = padL + (r.relS / maxT) * pw;
+
+    if (xDisp - xArr > 0.5) {
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(xArr, y + 1, xDisp - xArr, bh - 2);
+    }
+    ctx.fillStyle = "#3b82f6";
+    ctx.fillRect(xDisp, y, Math.max(3, xFirst - xDisp), bh);
+
+    ctx.fillStyle = "#10b981";
+    ctx.fillRect(xFirst, y, Math.max(2, xFin - xFirst), bh);
+
+    if (xRel - xFin > 1) {
+      ctx.fillStyle = "rgba(148, 163, 184, 0.45)";
+      ctx.fillRect(xFin, y + 1, xRel - xFin, bh - 2);
+    }
+
+    ctx.fillStyle = theme.fg;
+    ctx.beginPath(); ctx.arc(xArr, y + bh / 2, 2.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  const waits = reqs.map(r => (r.dispS - r.arrS) * 1000).sort((a, b) => a - b);
+  const makespan = Math.max(...reqs.map(r => r.finS));
+  const totOut = reqs.reduce((s, r) => s + r.outTok, 0);
+  document.getElementById("sim-stats").textContent =
+    `Makespan: ${makespan.toFixed(1)}s · Out Throughput: ${(totOut / makespan).toFixed(0)} tok/s · Median Queue Wait: ${(waits[10] / 1000).toFixed(2)}s`;
+}
+
+function setTab(tab) {
+  const vr = document.getElementById("view-results");
+  const vs = document.getElementById("view-sim");
+  const br = document.getElementById("btn-tab-results");
+  const bs = document.getElementById("btn-tab-sim");
+  if (tab === "results") {
+    vr.classList.remove("hidden"); vs.classList.add("hidden");
+    br.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition";
+    bs.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--border)] transition";
+    renderResultsCharts();
+  } else {
+    vr.classList.add("hidden"); vs.classList.remove("hidden");
+    bs.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--primary)] text-[var(--primary-foreground)] transition";
+    br.className = "px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--border)] transition";
+    renderWaterfallSim();
+  }
+}
+
+window.addEventListener("resize", () => { renderResultsCharts(); renderWaterfallSim(); });
+renderResultsCharts();
+</script>
+</body>
+</html>
+
